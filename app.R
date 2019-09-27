@@ -58,7 +58,7 @@ server <- function(input, output, session) {
     sliderTextInput("Date",
                 "Select date:",
                 choices=choice_Date(),
-                animate=animationOptions(interval=1000), width="100%")
+                animate=animationOptions(interval=ifelse(input$Interval=="Year", 1000, 200)), width="100%")
   })
   
   mapdata<-reactive({
@@ -78,10 +78,15 @@ server <- function(input, output, session) {
       }
   })
   
+  pal<-reactive({
+    colorFactor(c("#1b9e77", "#7570b3"), unique(Bivsum()$Taxa))
+  })
+  
   Mapplot<-reactive({
     leaflet(data = mapdata())%>%
       addProviderTiles("Esri.WorldGrayCanvas")%>%
-      fitBounds(~min(Longitude, na.rm=T), ~min(Latitude, na.rm=T), ~max(Longitude, na.rm=T), ~max(Latitude, na.rm=T))
+      fitBounds(~min(Longitude, na.rm=T), ~min(Latitude, na.rm=T), ~max(Longitude, na.rm=T), ~max(Latitude, na.rm=T))%>%
+      addLegend("topleft", pal = pal(), values = unique(Bivsum()$Taxa))
   })
   
   output$Mapplot <- renderLeaflet({
@@ -98,7 +103,7 @@ server <- function(input, output, session) {
       addMinicharts(lng = filteredmapdata()$Longitude, lat = filteredmapdata()$Latitude,
                     type = "pie",
                     chartdata = filteredmapdata()%>%select_at(vars(unique(Bivsum()$Taxa)))%>%as.matrix(), 
-                    colorPalette = colors, transitionTime = 0, opacity=0.5, width=60*(sqrt(filteredmapdata()$Total)/sqrt(max(mapdata()$Total))))%>%
+                    colorPalette = colors, transitionTime = 0, opacity=0.5, width=60*(sqrt(filteredmapdata()$Total)/sqrt(max(mapdata()$Total))), legend=F)%>%
       addCircleMarkers(lng = zeros$Longitude, lat = zeros$Latitude, fillColor="Black", radius=3, stroke=0, fillOpacity = 1)
   })
   

@@ -9,7 +9,8 @@ Biv<-read_excel("Bivalves app/1975-18 CPUE bivalves only, 2019Sept9.xlsx",
   select(Date, Station=StationCode, `Potamocorbula amurensis`, `Corbicula fluminea`)%>%
   gather(key="Taxa", value="CPUE", -Station, -Date)%>%
   mutate(Year=year(Date),
-         MonthYear=floor_date(Date, unit = "month"))
+         MonthYear=floor_date(Date, unit = "month"))%>%
+  separate(Station, into=c("Station", "Position"), sep="-")
 
 Stations<-read_excel("Bivalves app/1975-18 CPUE bivalves only, 2019Sept9.xlsx",
                      sheet = "75-17 station locations", skip=1)%>%
