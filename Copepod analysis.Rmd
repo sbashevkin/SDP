@@ -103,10 +103,54 @@ mbase<-brm(CPUE ~ 1, family=hurdle_gamma(),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
 
+mbase2<-brm(CPUE ~ 1, family=hurdle_gamma(link="inverse"),
+       data=filter(PF, Lifestage=="Adult"),
+       prior=prior(normal(0,100), class="Intercept"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup)
+
+mbase3<-brm(CPUE ~ 1, family=hurdle_gamma(link="softplus"),
+       data=filter(PF, Lifestage=="Adult"),
+       prior=prior(normal(0,100), class="Intercept"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup)
+
+mbase4<-brm(CPUE ~ 1, family=hurdle_lognormal(),
+       data=filter(PF, Lifestage=="Adult"),
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup)
+
 mbaseST<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_gamma(),
        data=filter(PF, Lifestage=="Adult"),
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup)
+
+mbase4ST<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_lognormal(),
+       data=filter(PF, Lifestage=="Adult"),
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup)
+
+mbaseST.2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_gamma(),
+       data=filter(PF, Lifestage=="Adult"),
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sds"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup)
+
+mbase4ST.2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_lognormal(),
+       data=filter(PF, Lifestage=="Adult"),
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma")+
+         prior(cauchy(0,5), class="sds"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
 
@@ -117,34 +161,62 @@ mbaseST2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Juli
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
 
+mbase4ST2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_lognormal(),
+       data=filter(PF, Lifestage=="Adult"),
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+
+m.1<-brm(CPUE ~ s(SalSurf_s) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s), family=hurdle_gamma(),
+       data=filter(PF, Lifestage=="Adult"),
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.9))
+
+m4.1.5<-brm(CPUE ~ s(SalSurf_l_s) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s)+ t2(Julian_day, bs="cc"), family=hurdle_lognormal(),
+       data=filter(PF, Lifestage=="Adult"),
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
 save.image("~/SDP/CopModels.RData")
 
-m<-brm(CPUE ~ s(SalSurf_s) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s), family=hurdle_gamma(),
+m.2<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_gamma(),
        data=filter(PF, Lifestage=="Adult"),
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.9))
 
-m2<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_gamma(),
+m.3<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_gamma(),
        data=filter(PF, Lifestage=="Adult"),
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.9))
 
-m3<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_gamma(),
+m4.3<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_lognormal(),
        data=filter(PF, Lifestage=="Adult"),
        prior=prior(normal(0,10), class="Intercept")+
-         prior(normal(0,5), class="b"),
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
-       iter = iterations, warmup = warmup, control=list(adapt_delta=0.9))
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
 ```
 
+Adding normal(0,100) prior to intercept in mbase results in exact same intercept estimate
+
+for mbaseST and mbase4ST, applying a cauchy(0,5) prior to the sds terms does not change the results. The data are too strong
 
 posterior predictive checks
 ```{r}
 prop_zero <- function(x) mean(x == 0)
 
-pp_check(m2, type="stat", stat=prop_zero)
+pp_check(m4.3, type="stat", stat=prop_zero)
+
+pp_check(m4.3)+scale_x_log10()
 ```
