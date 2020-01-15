@@ -18,9 +18,48 @@ require(tidyverse)
 require(zooper)
 require(lubridate)
 require(brms)
+require(sp)
+require(rgdal)
 ```
 
-#Load data
+# Cluster nearby stations
+
+```{r}
+# Clustering distance (m)
+d <- 1000
+
+Stations<-stations%>%
+  mutate(ID=paste(Source, Station))%>%
+  drop_na(Latitude, Longitude)
+
+
+xy <- SpatialPointsDataFrame(matrix(c(Stations$Longitude, Stations$Latitude), ncol=2), data.frame(ID=Stations$ID),
+                               proj4string=CRS("+proj=longlat +datum=NAD83"))
+
+xy <- spTransform(xy, CRS("+init=epsg:3488 +datum=NAD83")) # California Albers CRS
+
+chc <- hclust(dist(data.frame(rownames=rownames(xy@data), x=coordinates(xy)[,1],
+              y=coordinates(xy)[,2])), method="complete")
+
+# Compute distance
+chc.d40 <- cutree(chc, h=d)
+
+# Join results to meuse sp points
+xy@data <- data.frame(xy@data, Clust=chc.d40)
+
+Stations_clust<-Stations%>%
+  left_join(xy@data, by="ID")%>%
+  group_by(Clust)%>%
+  summarise(Latitude = mean(Latitude), Longitude = mean(Longitude), Station = list(ID))
+
+#plot(Stations$Longitude, Stations$Latitude)
+#plot(Stations_clust$Longitude, Stations_clust$Latitude)
+
+Stations_final<-Stations_clust%>%
+  unnest(Station)
+```
+
+#Load zooplankton data
 
 ```{r}
 PF<-zoopComb%>%
@@ -33,14 +72,19 @@ PF<-zoopComb%>%
   mutate(SalSurf_l = log(SalSurf),
          Julian_day = yday(Date))%>%
   mutate_at(vars(Date_num, SalSurf, SalSurf_l, Temperature, Latitude, Longitude), list(s=~(.-mean(., na.rm=T))/sd(., na.rm=T)))%>%
-  drop_na(Date, SalSurf, Temperature, Latitude, Longitude, CPUE)
+  drop_na(Date, SalSurf, Temperature, Latitude, Longitude, CPUE)%>%
+  mutate(Station=paste(Source, Station))%>%
+  left_join(Stations_final%>%
+              select(Clust, Station),
+            by="Station")%>%
+  rename(Clustered_station=Clust)
 ```
 
 #Exploratory plots
 
 Salinity
 ```{r}
-ggplot(filter(PF, Lifestage=="Adult"), aes(x=log(SalSurf), y=log(CPUE+1)))+
+ggplot(PF, aes(x=log(SalSurf), y=log(CPUE+1)))+
   geom_point(alpha=0.2)+
   scale_y_continuous(expand = expand_scale(mult=c(0.01, 0.05)))+
   scale_x_continuous(expand = expand_scale(mult=c(0.01, 0.05)))+
@@ -54,7 +98,7 @@ Quadratic
 
 Temperature
 ```{r}
-ggplot(filter(PF, Lifestage=="Adult"), aes(x=Temperature, y=log(CPUE+1)))+
+ggplot(PF, aes(x=Temperature, y=log(CPUE+1)))+
   geom_point(alpha=0.2)+
   scale_y_continuous(expand = expand_scale(mult=c(0.01, 0.05)))+
   scale_x_continuous(expand = expand_scale(mult=c(0.01, 0.05)))+
@@ -67,7 +111,7 @@ More in warmer temperatures, even controlling for month
 
 Tide
 ```{r}
-ggplot(filter(PF, Lifestage=="Adult"), aes(x=Tide, y=log(CPUE+1)))+
+ggplot(PF, aes(x=Tide, y=log(CPUE+1)))+
   geom_boxplot()+
   geom_violin()+
   scale_y_continuous(expand = expand_scale(mult=c(0.01, 0.05)))+
@@ -80,7 +124,7 @@ Not much here
 
 Secchi
 ```{r}
-ggplot(filter(PF, Lifestage=="Adult"), aes(x=Secchi, y=log(CPUE+1)))+
+ggplot(PF, aes(x=Secchi, y=log(CPUE+1)))+
   geom_point(alpha=0.2)+
   scale_y_continuous(expand = expand_scale(mult=c(0.01, 0.05)))+
   scale_x_continuous(expand = expand_scale(mult=c(0.01, 0.05)))+
@@ -98,39 +142,39 @@ iterations <- 5e3
 warmup <- iterations/4
 
 mbase<-brm(CPUE ~ 1, family=hurdle_gamma(),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,10), class="Intercept"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
 
 mbase2<-brm(CPUE ~ 1, family=hurdle_gamma(link="inverse"),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,100), class="Intercept"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
 
 mbase3<-brm(CPUE ~ 1, family=hurdle_gamma(link="softplus"),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,100), class="Intercept"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
 
 mbase4<-brm(CPUE ~ 1, family=hurdle_lognormal(),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
 
 mbaseST<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_gamma(),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
 
 mbase4ST<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_lognormal(),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b")+
          prior(cauchy(0,5), class="sigma"),
@@ -138,7 +182,7 @@ mbase4ST<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=h
        iter = iterations, warmup = warmup)
 
 mbaseST.2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_gamma(),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b")+
          prior(cauchy(0,5), class="sds"),
@@ -146,7 +190,7 @@ mbaseST.2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=
        iter = iterations, warmup = warmup)
 
 mbase4ST.2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_lognormal(),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b")+
          prior(cauchy(0,5), class="sigma")+
@@ -155,14 +199,14 @@ mbase4ST.2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family
        iter = iterations, warmup = warmup)
 
 mbaseST2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_gamma(),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
 
 mbase4ST2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_lognormal(),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b")+
          prior(cauchy(0,5), class="sigma"),
@@ -170,14 +214,22 @@ mbase4ST2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Jul
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
 
 m.1<-brm(CPUE ~ s(SalSurf_s) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s), family=hurdle_gamma(),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.9))
 
-m4.1.5<-brm(CPUE ~ s(SalSurf_l_s) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s)+ t2(Julian_day, bs="cc"), family=hurdle_lognormal(),
-       data=filter(PF, Lifestage=="Adult"),
+m4.1.1<-brm(CPUE ~ s(SalSurf_l_s) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s)+ t2(Julian_day, bs="cc"), family=hurdle_lognormal(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+
+m4.1.2<-brm(CPUE ~ s(SalSurf_l_s) + s(Temperature_s) + t2(Julian_day, bs="cc"), family=hurdle_lognormal(),
+       data=PF, autocor = cor_arma(~Date_num, p = 1, q = 1, cov=TRUE),
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b")+
          prior(cauchy(0,5), class="sigma"),
@@ -186,21 +238,21 @@ m4.1.5<-brm(CPUE ~ s(SalSurf_l_s) + s(Temperature_s) + t2(Latitude_s, Longitude_
 save.image("~/SDP/CopModels.RData")
 
 m.2<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_gamma(),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.9))
 
 m.3<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_gamma(),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.9))
 
 m4.3<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_lognormal(),
-       data=filter(PF, Lifestage=="Adult"),
+       data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b")+
          prior(cauchy(0,5), class="sigma"),
@@ -218,5 +270,5 @@ prop_zero <- function(x) mean(x == 0)
 
 pp_check(m4.3, type="stat", stat=prop_zero)
 
-pp_check(m4.3)+scale_x_log10()
+pp_check(m4.1.5)+scale_x_log10()
 ```
