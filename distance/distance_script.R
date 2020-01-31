@@ -8,13 +8,22 @@ require(tibble)
 require(dplyr)
 require(rlang)
 
-# read in the shape file
-map<-read_sf("Map/DeltaMap.shp")%>%
-  st_transform(crs="+proj=utm +zone=10 +datum=NAD83")
+pointmover <- function(Data, Attributecol, Shapefile){
+  Attributecol <- sym(Attributecol)
+  Attributecol <- enquo(Attributecol)
+  mappoints<-st_cast(Shapefile, "POINT", warn=F)
+  badpoints<-filter(Data, is.na(!!Attributecol))
+  new<-mappoints[st_nearest_feature(badpoints, mappoints),]
+  
+  badpoints$geometry<-new$geometry
+  out<-rbind(badpoints, filter(Data, !is.na(!!Attributecol)))
+  return(out)
+  
+}
 
 # read in the stations table (just a csv of it, to avoid DB stuff)
 
-Stations <- read.csv("20mm_stations_table.csv")
+Stations <- read.csv("distance/20mm_stations_table.csv")
 
 # restrict to stations included
 
@@ -24,79 +33,75 @@ stations_in <- c("405", "411", "418", "501", "504", "508", "513", "519",
                  "815", "901", "902", "906", "910", "912", "914", "915", 
                  "918", "919")
 
-Stations <- Stations[which(Stations$Station %in% stations_in), ]
+Stations <- Stations%>%
+  filter(Station %in% stations_in)%>%
+  mutate(Lat = LatD + LatM / 60 + LatS / 3600,
+         Lon = -1 * (LonD + LonM / 60 + LonS / 3600))
 
-# convert DMS to UTM for stations
-
-Lat <- rep(NA, nrow(Stations))
-Lon <- rep(NA, nrow(Stations))
-    
-for(i in 1:nrow(Stations)){
-  lat <- Stations$LatD[i] + Stations$LatM[i] / 60 + Stations$LatS[i] / 3600
-  lon <- Stations$LonD[i] + Stations$LonM[i] / 60 + Stations$LonS[i] / 3600
-  Lat[i] <- lat
-  Lon[i] <- -1 * lon
+Waterdist <- function(Shapefile_path = "~/ZoopSynth/Old data and code/DeltaShapefile", 
+                      Shapefile_crs = "+proj=utm +zone=10 +datum=NAD83",
+                      Points = Stations,
+                      Attributecol = "Shape_Area"){
+  
+  Attributecol2<-sym(Attributecol)
+  Attributecol2<-enquo(Attributecol2)
+  
+  # read in the shape file
+  map<-read_sf(Shapefile_path)%>%
+    st_transform(crs=Shapefile_crs)
+  
+  stationlocs <- project(as.matrix(select(Points, Lon, Lat)), "+proj=utm +zone=10 ellps=WGS84")
+  
+  Points <- as_tibble(stationlocs)%>%
+    mutate(Station = Points$Station)%>%
+    st_as_sf(coords = c("Lon", "Lat"),
+             crs = "+proj=utm +zone=10 ellps=WGS84",
+             remove=T)
+  
+  # Are all points in the water polygon? (st_intersects returns a null object when there is no intersection)
+  
+  #Join the points to the polygon to identify the land-based point(s)
+  
+  Points_joined<-st_join(Points, map, join = st_intersects)%>%
+    arrange(Station)
+  
+  
+  
+  # If all points are not within polygon, replace point outside polygon with closest point within polygon.
+  if(!all(!is.na(pull(Points_joined, !!Attributecol2)))){
+    Points_joined<-pointmover(Points_joined, Attributecol, map)%>%
+      arrange(Station)
+  }
+  
+  # Are all points in the water polygon now?
+  
+  if(!(length(unlist(st_intersects(Points_joined, map)))==nrow(Points))){
+    stop("Points could not be moved within shapefile.")
+  }
+  
+  # rasterize the polygon and designate water = 1, land = 0
+  # using 75 m x 75 m grid squares and rasterizing the extent of the map
+  
+  mapextent<-st_bbox(map)
+  
+  cols <- round((mapextent["xmax"] - mapextent["xmin"]) / 75) # 1394 columns
+  rows <- round((mapextent["ymax"] - mapextent["ymin"]) / 75) # 1500 rows
+  
+  r <- raster(ncol = cols, nrow = rows)
+  extent(r) <- extent(c(mapextent["xmin"], mapextent["xmax"], mapextent["ymin"], mapextent["ymax"]))
+  rp <- fasterize(map, r)
+  rp[is.na(rp)] <- 0
+  
+  # measure distances between points within the polygon (i.e. water distances)
+  # using the mean function in 16 directions (knight and one-cell queen moves) 
+  # first need to measure transitions between grid squares
+  # requires geographic correction 
+  
+  tp <- transition(rp, mean, 16)
+  tpc <- geoCorrection(tp, "c", scl = FALSE)
+  waterDist <- costDistance(tpc, st_coordinates(Points_joined))
+  
+  return(waterDist)
 }
 
-xy <- cbind(Lon, Lat)
-stationlocs <- project(xy, "+proj=utm +zone=10 ellps=WGS84")
-Easting <- stationlocs[,1]
-Northing <- stationlocs[,2]
 
-Points <- as_tibble(stationlocs)%>%
-  mutate(Station = Stations$Station)%>%
-  st_as_sf(coords = c("Lon", "Lat"),
-                   crs = "+proj=utm +zone=10 ellps=WGS84",
-                   remove=T)
-
-# Are all points in the water polygon? (st_intersects returns a null object when there is no intersection)
-
-length(unlist(st_intersects(Points, map)))==nrow(Points)
-
-#Join the points to the polygon to identify the land-based point(s)
-
-Points_joined<-st_join(Points, map, join = st_intersects)%>%
-  arrange(Station)
-
-# Replace point outside polygon with closest point within polygon. Hopefully a generalizable approach
-
-pointreplacer <- function(data, attributecol, shapefile){
-  attributecol <- enquo(attributecol)
-  mappoints<-st_cast(shapefile, "POINT", warn=F)
-  badpoints<-filter(data, is.na(!!attributecol))
-  new<-mappoints[st_nearest_feature(badpoints, mappoints),]
-  
-  badpoints$geometry<-new$geometry
-  out<-rbind(badpoints, filter(data, !is.na(!!attributecol)))
-  return(out)
-  
-}
-
-Points_joined<-pointreplacer(Points_joined, TYPE, map)%>%
-  arrange(Station)
-
-# Are all points in the water polygon now?
-
-length(unlist(st_intersects(Points_joined, map)))==nrow(Points)
-
-# rasterize the polygon and designate water = 1, land = 0
-# using 75 m x 75 m grid squares and rasterizing the extent of the map
-
-mapextent<-st_bbox(map)
-
-(mapextent["ymax"] - mapextent["ymin"]) / 75 # 1500 rows
-(mapextent["xmax"] - mapextent["xmin"]) / 75 # 1394 columns
-
-r <- raster(ncol = 1394, nrow = 1500)
-extent(r) <- extent(c(mapextent["xmin"], mapextent["xmax"], mapextent["ymin"], mapextent["ymax"]))
-rp <- fasterize(map, r)
-rp[is.na(rp)] <- 0
-
-# measure distances between points within the polygon (i.e. water distances)
-# using the mean function in 16 directions (knight and one-cell queen moves) 
-# first need to measure transitions between grid squares
-# requires geographic correction 
-
-tp <- transition(rp, mean, 16)
-tpc <- geoCorrection(tp, "c", scl = FALSE)
-waterDist <- costDistance(tpc, st_coordinates(Points_joined))

@@ -146,6 +146,7 @@ mbase<-brm(CPUE ~ 1, family=hurdle_gamma(),
        prior=prior(normal(0,10), class="Intercept"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
+mbase<-add_criterion(mbase, c("loo", "waic"))
 
 mbase2<-brm(CPUE ~ 1, family=hurdle_gamma(link="inverse"),
        data=PF,
@@ -165,6 +166,7 @@ mbase4<-brm(CPUE ~ 1, family=hurdle_lognormal(),
          prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
+mbase4<-add_criterion(mbase4, c("loo", "waic"))
 
 mbaseST<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_gamma(),
        data=PF,
@@ -172,6 +174,7 @@ mbaseST<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hu
          prior(normal(0,5), class="b"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
+mbaseST<-add_criterion(mbaseST, c("loo", "waic"), reloo = TRUE)
 
 mbase4ST<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_lognormal(),
        data=PF,
@@ -180,6 +183,7 @@ mbase4ST<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=h
          prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
+mbase4ST<-add_criterion(mbase4ST, c("loo", "waic"))
 
 mbaseST.2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_gamma(),
        data=PF,
@@ -188,6 +192,7 @@ mbaseST.2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=
          prior(cauchy(0,5), class="sds"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
+mbaseST.2<-add_criterion(mbaseST.2, c("loo", "waic"))
 
 mbase4ST.2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_lognormal(),
        data=PF,
@@ -197,6 +202,7 @@ mbase4ST.2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family
          prior(cauchy(0,5), class="sds"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup)
+mbase4ST.2<-add_criterion(mbase4ST.2, c("loo", "waic"))
 
 mbaseST2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_gamma(),
        data=PF,
@@ -204,6 +210,7 @@ mbaseST2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Juli
          prior(normal(0,5), class="b"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+mbaseST2<-add_criterion(mbaseST2, c("loo", "waic"))
 
 mbase4ST2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_lognormal(),
        data=PF,
@@ -212,6 +219,16 @@ mbase4ST2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Jul
          prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+mbase4ST2<-add_criterion(mbase4ST2, c("loo", "waic"))
+
+mbase4ST3<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, Year, bs=c("cc", "cr")), family=hurdle_lognormal(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+mbase4ST3<-add_criterion(mbase4ST3, c("loo", "waic"))
 
 m.1<-brm(CPUE ~ s(SalSurf_s) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s), family=hurdle_gamma(),
        data=PF,
@@ -268,7 +285,7 @@ posterior predictive checks
 ```{r}
 prop_zero <- function(x) mean(x == 0)
 
-pp_check(m4.3, type="stat", stat=prop_zero)
+pp_check(mbase4ST3, type="stat", stat=prop_zero)
 
-pp_check(m4.1.5)+scale_x_log10()
+pp_check(mbase4ST3)+scale_x_log10()
 ```
