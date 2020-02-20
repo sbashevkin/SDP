@@ -70,7 +70,8 @@ PF<-zoopComb%>%
   filter(Year>1995)%>% # Introduced in 1987, give them 8 years to get established
   mutate(Date_num=as.numeric(Date))%>%
   mutate(SalSurf_l = log(SalSurf),
-         Julian_day = yday(Date))%>%
+         Julian_day = yday(Date),
+         Count=round(CPUE*Volume))%>%
   mutate_at(vars(Date_num, SalSurf, SalSurf_l, Temperature, Latitude, Longitude), list(s=~(.-mean(., na.rm=T))/sd(., na.rm=T)))%>%
   drop_na(Date, SalSurf, Temperature, Latitude, Longitude, CPUE)%>%
   mutate(Station=paste(Source, Station))%>%
@@ -230,12 +231,22 @@ mbase4ST3<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Jul
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
 mbase4ST3<-add_criterion(mbase4ST3, c("loo", "waic"))
 
+mbase4ST4<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source), family=hurdle_lognormal(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+#mbase4ST4<-add_criterion(mbase4ST4, c("loo", "waic"))
+
 m.1<-brm(CPUE ~ s(SalSurf_s) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s), family=hurdle_gamma(),
        data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.9))
+m.1<-add_criterion(m.1, c("loo", "waic"))
 
 m4.1.1<-brm(CPUE ~ s(SalSurf_l_s) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s)+ t2(Julian_day, bs="cc"), family=hurdle_lognormal(),
        data=PF,
@@ -244,6 +255,7 @@ m4.1.1<-brm(CPUE ~ s(SalSurf_l_s) + s(Temperature_s) + t2(Latitude_s, Longitude_
          prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+m4.1.1<-add_criterion(m4.1.1, c("loo", "waic"))
 
 m4.1.2<-brm(CPUE ~ s(SalSurf_l_s) + s(Temperature_s) + t2(Julian_day, bs="cc"), family=hurdle_lognormal(),
        data=PF, autocor = cor_arma(~Date_num, p = 1, q = 1, cov=TRUE),
@@ -260,6 +272,7 @@ m.2<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitu
          prior(normal(0,5), class="b"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.9))
+m.2<-add_criterion(m.2, c("loo", "waic"))
 
 m.3<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_gamma(),
        data=PF,
@@ -267,6 +280,7 @@ m.3<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitu
          prior(normal(0,5), class="b"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.9))
+m.3<-add_criterion(m.3, c("loo", "waic"))
 
 m4.3<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_lognormal(),
        data=PF,
@@ -275,17 +289,52 @@ m4.3<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longit
          prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+m4.3<-add_criterion(m4.3, c("loo", "waic"), reloo=TRUE)
+
+m4.4<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, Year, bs=c("cc", "cr")), family=hurdle_lognormal(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+#m4.4<-add_criterion(m4.4, c("loo", "waic"), reloo=TRUE)
 ```
 
 Adding normal(0,100) prior to intercept in mbase results in exact same intercept estimate
 
 for mbaseST and mbase4ST, applying a cauchy(0,5) prior to the sds terms does not change the results. The data are too strong
 
+
+Trying poisson models on counts
+```{r}
+mbasecount<-brm(Count ~ Volume, family=zero_inflated_poisson(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup)
+mbasecount<-add_criterion(mbasecount, c("loo", "waic"))
+
+mbasecount2<-brm(Count ~ Volume, family=zero_inflated_negbinomial(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup)
+mbasecount2<-add_criterion(mbasecount2, c("loo", "waic"))
+```
+
 posterior predictive checks
 ```{r}
-prop_zero <- function(x) mean(x == 0)
+pp <- function(model){
+  prop_zero <- function(x) mean(x == 0)
+  
+  p<-list()
+  
+  p$zero<-pp_check(model, type="stat", stat=prop_zero)
+  
+  p$dist<-pp_check(model)+scale_x_log10()
+  
+  return(p)
+}
 
-pp_check(mbase4ST3, type="stat", stat=prop_zero)
-
-pp_check(mbase4ST3)+scale_x_log10()
 ```
