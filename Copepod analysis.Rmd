@@ -20,6 +20,8 @@ require(lubridate)
 require(brms)
 require(sp)
 require(rgdal)
+require(spacetools)
+require(sf)
 ```
 
 # Cluster nearby stations
@@ -30,6 +32,7 @@ d <- 1000
 
 Stations<-stations%>%
   mutate(ID=paste(Source, Station))%>%
+  filter(Source!="YBFMP")%>%
   drop_na(Latitude, Longitude)
 
 
@@ -57,6 +60,11 @@ Stations_clust<-Stations%>%
 
 Stations_final<-Stations_clust%>%
   unnest(Station)
+
+#Get in-water distance between stations
+map<-read_sf("~/Hydro_CH2MHill_Merged/hydro_merged_dslv.shp")
+distance <- Waterdist(dplyr::select(map, OBJECTID), Stations_clust, OBJECTID, Latitude, Longitude, Clust)
+distance_cov <-cov.from.dist(distance)
 ```
 
 #Load zooplankton data
@@ -78,6 +86,7 @@ PF<-zoopComb%>%
   left_join(Stations_final%>%
               select(Clust, Station),
             by="Station")%>%
+  mutate(Clust=as.character(Clust))%>%
   rename(Clustered_station=Clust)
 ```
 
@@ -238,7 +247,16 @@ mbase4ST4<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Jul
          prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
-#mbase4ST4<-add_criterion(mbase4ST4, c("loo", "waic"))
+mbase4ST4<-add_criterion(mbase4ST4, c("loo", "waic"))
+
+mbase4ST5<-brm(CPUE ~ s(Date_num_s) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source) + (1|Clustered_station), family=hurdle_lognormal(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+mbase4ST4<-add_criterion(mbase4ST4, c("loo", "waic"))
 
 m.1<-brm(CPUE ~ s(SalSurf_s) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s), family=hurdle_gamma(),
        data=PF,
@@ -264,7 +282,7 @@ m4.1.2<-brm(CPUE ~ s(SalSurf_l_s) + s(Temperature_s) + t2(Julian_day, bs="cc"), 
          prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
-save.image("~/SDP/CopModels.RData")
+
 
 m.2<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family=hurdle_gamma(),
        data=PF,
@@ -289,21 +307,44 @@ m4.3<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longit
          prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
-m4.3<-add_criterion(m4.3, c("loo", "waic"), reloo=TRUE)
+m4.3<-add_criterion(m4.3, c("loo", "waic"))
 
-m4.4<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, Year, bs=c("cc", "cr")), family=hurdle_lognormal(),
+m4.4<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source), family=hurdle_lognormal(),
        data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b")+
          prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
-#m4.4<-add_criterion(m4.4, c("loo", "waic"), reloo=TRUE)
+m4.4<-add_criterion(m4.4, c("loo", "waic"))
+
+m4.5<-brm(CPUE ~ s(SalSurf_s) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source), family=hurdle_lognormal(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+m4.5<-add_criterion(m4.5, c("loo", "waic"))
+
+m4.6<-brm(CPUE ~ poly(SalSurf_l_s, 3) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source), family=hurdle_lognormal(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+m4.6<-add_criterion(m4.6, c("loo", "waic"))
+save(m4.6, file="~/SDP/m4.6.RData")
 ```
 
 Adding normal(0,100) prior to intercept in mbase results in exact same intercept estimate
 
 for mbaseST and mbase4ST, applying a cauchy(0,5) prior to the sds terms does not change the results. The data are too strong
+
+```{r}
+loo_compare(mbase, mbase4, mbaseST, mbase4ST, mbaseST.2, mbase4ST.2, mbaseST2, mbase4ST2, mbase4ST3, mbase4ST4, m.1, m4.1.1, m.2, m.3, m4.3, m4.4, m4.5, m4.6)
+```
 
 
 Trying poisson models on counts
