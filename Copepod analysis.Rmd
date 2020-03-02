@@ -18,53 +18,29 @@ require(tidyverse)
 require(zooper)
 require(lubridate)
 require(brms)
-require(sp)
-require(rgdal)
 require(spacetools)
 require(sf)
+require(geoR)
+require(corpcor)
 ```
 
 # Cluster nearby stations
 
 ```{r}
-# Clustering distance (m)
-d <- 1000
-
 Stations<-stations%>%
-  mutate(ID=paste(Source, Station))%>%
+  mutate(Station=paste(Source, Station))%>%
   filter(Source!="YBFMP")%>%
   drop_na(Latitude, Longitude)
 
-
-xy <- SpatialPointsDataFrame(matrix(c(Stations$Longitude, Stations$Latitude), ncol=2), data.frame(ID=Stations$ID),
-                               proj4string=CRS("+proj=longlat +datum=NAD83"))
-
-xy <- spTransform(xy, CRS("+init=epsg:3488 +datum=NAD83")) # California Albers CRS
-
-chc <- hclust(dist(data.frame(rownames=rownames(xy@data), x=coordinates(xy)[,1],
-              y=coordinates(xy)[,2])), method="complete")
-
-# Compute distance
-chc.d40 <- cutree(chc, h=d)
-
-# Join results to meuse sp points
-xy@data <- data.frame(xy@data, Clust=chc.d40)
-
-Stations_clust<-Stations%>%
-  left_join(xy@data, by="ID")%>%
-  group_by(Clust)%>%
-  summarise(Latitude = mean(Latitude), Longitude = mean(Longitude), Station = list(ID))
+Stations_clust <- Pointcluster(Stations, 1000, Latitude, Longitude, Station, Expand = FALSE)
 
 #plot(Stations$Longitude, Stations$Latitude)
 #plot(Stations_clust$Longitude, Stations_clust$Latitude)
 
-Stations_final<-Stations_clust%>%
-  unnest(Station)
-
 #Get in-water distance between stations
-map<-read_sf("~/Hydro_CH2MHill_Merged/hydro_merged_dslv.shp")
-distance <- Waterdist(dplyr::select(map, OBJECTID), Stations_clust, OBJECTID, Latitude, Longitude, Clust)
-distance_cov <-cov.from.dist(distance)
+distance <- Waterdist(Delta, Stations_clust, Latitude, Longitude, Clust, Water_map_transitioned = Delta_transitioned)
+
+Stations_final <- unnest(Stations_clust, Station)
 ```
 
 #Load zooplankton data
@@ -87,7 +63,16 @@ PF<-zoopComb%>%
               select(Clust, Station),
             by="Station")%>%
   mutate(Clust=as.character(Clust))%>%
-  rename(Clustered_station=Clust)
+  rename(Clustered_station = Clust)%>%
+  mutate(Clustered_station2 = Clustered_station)
+
+# Subset distance matrix to just those station clusters present in the dataset
+
+distance<-distance/max(distance)
+distance2<-distance[which(rownames(distance)%in%unique(PF$Clustered_station)), which(colnames(distance)%in%unique(PF$Clustered_station))]
+
+distance_cov <-cov.spatial(distance2, cov.pars=c(1,2))
+distance_cov <- make.positive.definite(distance_cov)
 ```
 
 #Exploratory plots
@@ -250,13 +235,25 @@ mbase4ST4<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Jul
 mbase4ST4<-add_criterion(mbase4ST4, c("loo", "waic"))
 
 mbase4ST5<-brm(CPUE ~ s(Date_num_s) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source) + (1|Clustered_station), family=hurdle_lognormal(),
-       data=PF,
+       data=PF, cov_ranef = list(Clustered_station=distance_cov),
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b")+
          prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
-       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
-mbase4ST4<-add_criterion(mbase4ST4, c("loo", "waic"))
+       iter = iterations, warmup = warmup, control = list(max_treedepth = 15))
+mbase4ST5<-add_criterion(mbase4ST5, c("loo", "waic"))
+save.image("~/SDP/CopModels.RData")
+
+mbase4ST6<-brm(CPUE ~ s(Date_num_s) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source) + (1|Clustered_station) + (1|Clustered_station2), family=hurdle_lognormal(),
+       data=PF, cov_ranef = list(Clustered_station=distance_cov),
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control = list(max_treedepth = 15))
+mbase4ST6<-add_criterion(mbase4ST6, c("loo", "waic"))
+
+save.image("~/SDP/CopModels.RData")
 
 m.1<-brm(CPUE ~ s(SalSurf_s) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Date_num_s), family=hurdle_gamma(),
        data=PF,
@@ -336,6 +333,24 @@ m4.6<-brm(CPUE ~ poly(SalSurf_l_s, 3) + s(Temperature_s) + t2(Latitude_s, Longit
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
 m4.6<-add_criterion(m4.6, c("loo", "waic"))
 save(m4.6, file="~/SDP/m4.6.RData")
+
+m4.7<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + s(Date_num_s) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source) + (1|Clustered_station), family=hurdle_lognormal(),
+       data=PF, cov_ranef = list(Clustered_station=distance_cov),
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup)
+m4.7<-add_criterion(m4.7, c("loo", "waic"))
+
+m4.8<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + s(Date_num_s) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source) + (1|Clustered_station) + (1|Clustered_station2), family=hurdle_lognormal(),
+       data=PF, cov_ranef = list(Clustered_station=distance_cov),
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup)
+m4.8<-add_criterion(m4.8, c("loo", "waic"))
 ```
 
 Adding normal(0,100) prior to intercept in mbase results in exact same intercept estimate
@@ -343,7 +358,7 @@ Adding normal(0,100) prior to intercept in mbase results in exact same intercept
 for mbaseST and mbase4ST, applying a cauchy(0,5) prior to the sds terms does not change the results. The data are too strong
 
 ```{r}
-loo_compare(mbase, mbase4, mbaseST, mbase4ST, mbaseST.2, mbase4ST.2, mbaseST2, mbase4ST2, mbase4ST3, mbase4ST4, m.1, m4.1.1, m.2, m.3, m4.3, m4.4, m4.5, m4.6)
+loo_compare(mbase, mbase4, mbaseST, mbase4ST, mbaseST.2, mbase4ST.2, mbaseST2, mbase4ST2, mbase4ST3, mbase4ST4, mbase4ST5, mbase4ST6, m.1, m4.1.1, m.2, m.3, m4.3, m4.4, m4.5, m4.6)
 ```
 
 
