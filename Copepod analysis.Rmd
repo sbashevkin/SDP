@@ -397,3 +397,39 @@ pp <- function(model){
 }
 
 ```
+
+```{r}
+newdata <- expand.grid(Latitude_s=seq(min(PF$Latitude_s), max(PF$Latitude_s), length.out = 100), Longitude_s=seq(min(PF$Longitude_s), max(PF$Longitude_s), length.out = 100), Date_num_s=c(-1.633522,-0.022668713,	1.592155), Julian_day=182, SalSurf_l_s=0, Temperature_s=0)%>%
+  mutate(Year = case_when(
+    Date_num_s < (-1.5) ~ 1998,
+    Date_num_s > (-1) & Date_num_s < 1~ 2008,
+    Date_num_s > 1~ 2018
+  ))%>%
+  mutate(Latitude=Latitude_s*sd(PF$Latitude)+mean(PF$Latitude),
+         Longitude=Longitude_s*sd(PF$Longitude)+mean(PF$Longitude))
+
+pred<-fitted(m4.4, newdata = newdata, re_formula=NA)
+
+newdata$CPUE<-pred[,1]
+```
+
+```{r}
+p1998<-ggplot(filter(newdata, Year==1998), aes(x=Longitude, y=Latitude))+
+  geom_contour_filled(aes(z=CPUE))+
+  theme_bw()+
+  theme(panel.grid=element_blank(), strip.background = element_rect(fill="white", color="black"), legend.position = "none")
+p1998
+
+p2008<-ggplot(filter(newdata, Year==2008), aes(x=Longitude, y=Latitude))+
+  geom_contour_filled(aes(z=CPUE))+
+  theme_bw()+
+  theme(panel.grid=element_blank(), strip.background = element_rect(fill="white", color="black"), legend.position = "none")
+p2008
+
+p2018<-ggplot(filter(newdata, Year==2018), aes(x=Longitude, y=Latitude))+
+  geom_contour_filled(aes(z=CPUE))+
+  theme_bw()+
+  theme(panel.grid=element_blank(), strip.background = element_rect(fill="white", color="black"), legend.position = "none")
+p2018
+```
+
