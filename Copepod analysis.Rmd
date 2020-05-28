@@ -15,6 +15,7 @@ Load packages
 
 ```{r}
 require(tidyverse)
+require(mgcv)
 require(zooper)
 require(lubridate)
 require(brms)
@@ -30,9 +31,12 @@ require(corpcor)
 Stations<-stations%>%
   mutate(Station=paste(Source, Station))%>%
   filter(Source!="YBFMP")%>%
+  bind_rows(stationsEMPEZ%>%
+              mutate(Station=paste("EMP", Station, year(Date), month(Date), day(Date))))%>%
   drop_na(Latitude, Longitude)
 
-Stations_clust <- Pointcluster(Stations, 1000, Latitude, Longitude, Station, Expand = FALSE)
+Stations_clust <- Pointcluster(Points=Stations, Distance=1000, Latitude_column=Latitude, 
+                               Longitude_column=Longitude, PointID_column=Station, Expand = FALSE)
 
 #plot(Stations$Longitude, Stations$Latitude)
 #plot(Stations_clust$Longitude, Stations_clust$Latitude)
@@ -40,7 +44,8 @@ Stations_clust <- Pointcluster(Stations, 1000, Latitude, Longitude, Station, Exp
 Delta_transitioned <- spacetools::Maptransitioner(spacetools::Delta)
 
 #Get in-water distance between stations
-distance <- Waterdist(Delta, Stations_clust, Latitude, Longitude, Clust, Water_map_transitioned = Delta_transitioned)
+distance <- Waterdist(Water_map=Delta, Points=Stations_clust, Latitude_column=Latitude, 
+                      Longitude_column=Longitude, PointID_column=Clust, Water_map_transitioned = Delta_transitioned)
 
 Stations_final <- unnest(Stations_clust, Station)
 ```
@@ -56,24 +61,28 @@ PF<-zoopComb%>%
   filter(Year>1995)%>% # Introduced in 1987, give them 8 years to get established
   mutate(Date_num=as.numeric(Date))%>%
   mutate(SalSurf_l = log(SalSurf),
-         Julian_day = yday(Date),
-         Count=round(CPUE*Volume))%>%
-  mutate_at(vars(Date_num, SalSurf, SalSurf_l, Temperature, Latitude, Longitude), list(s=~(.-mean(., na.rm=T))/sd(., na.rm=T)))%>%
+         Julian_day = yday(Date))%>%
   drop_na(Date, SalSurf, Temperature, Latitude, Longitude, CPUE)%>%
-  mutate(Station=paste(Source, Station))%>%
+  mutate(Station=if_else(Station%in%unique(zooper::stationsEMPEZ$Station), paste(Source, Station, year(Date), month(Date), day(Date)), paste(Source, Station)))%>%
   left_join(Stations_final%>%
               select(Clust, Station),
             by="Station")%>%
   mutate(Clust=as.character(Clust))%>%
   rename(Clustered_station = Clust)%>%
-  mutate(Clustered_station2 = Clustered_station)
+  mutate(Clustered_station2 = Clustered_station,
+         Date2=if_else(is.na(Datetime), parse_date_time(paste0(year(Date), "-", month(Date), "-", day(Date), " 12:00"), "%Y-%m-%d %H:%M", tz="America/Los_Angeles"), Datetime))%>%
+  group_by_at(vars(-CPUE, -Volume, -SampleID))%>%
+  summarize(CPUE=mean(CPUE), Volume=mean(Volume))%>%
+  ungroup()%>%
+  mutate(Count=round(CPUE*Volume))%>%
+  mutate_at(vars(Date_num, SalSurf, SalSurf_l, Temperature, Latitude, Longitude, Julian_day), list(s=~(.-mean(., na.rm=T))/sd(., na.rm=T)))
 
 # Subset distance matrix to just those station clusters present in the dataset
 
-distance<-distance/max(distance)
-distance2<-distance[which(rownames(distance)%in%unique(PF$Clustered_station)), which(colnames(distance)%in%unique(PF$Clustered_station))]
+distance2<-distance/max(distance)
+distance3<-distance2[which(rownames(distance2)%in%unique(PF$Clustered_station)), which(colnames(distance2)%in%unique(PF$Clustered_station))]
 
-distance_cov <-cov.spatial(distance2, cov.pars=c(1,2))
+distance_cov <-cov.spatial(distance3, cov.pars=c(1,2))
 distance_cov <- make.positive.definite(distance_cov)
 ```
 
@@ -201,6 +210,19 @@ mbase4ST.2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)), family
        iter = iterations, warmup = warmup)
 mbase4ST.2<-add_criterion(mbase4ST.2, c("loo", "waic"))
 
+gam4ST.3<-gam(log(CPUE) ~ t2(Latitude_s, Longitude_s, Year, d=c(2,1), k=c(20,15)),
+       data=filter(PF, CPUE>0))
+
+mbase4ST.3<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Year, d=c(2,1), k=c(20,15)), family=hurdle_lognormal(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma")+
+         prior(cauchy(0,5), class="sds"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup)
+mbase4ST.3<-add_criterion(mbase4ST.3, c("loo", "waic"))
+
 mbaseST2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, bs="cc"), family=hurdle_gamma(),
        data=PF,
        prior=prior(normal(0,10), class="Intercept")+
@@ -227,7 +249,9 @@ mbase4ST3<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Jul
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
 mbase4ST3<-add_criterion(mbase4ST3, c("loo", "waic"))
 
-mbase4ST4<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source), family=hurdle_lognormal(),
+gam4ST4<-gamm(log(CPUE) ~ t2(Latitude_s, Longitude_s, Year, d=c(2,1), k=c(15,10)) + t2(Julian_day, Year, bs=c("cc", "cr"), k=c(7, 10)), random=list(Source=~1), data=filter(PF, CPUE>0))
+
+mbase4ST4<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1), k=c(15,10)) + t2(Julian_day, Year, bs=c("cc", "cr"), k=c(7, 10)) + (1|Source), family=hurdle_lognormal(),
        data=PF,
        prior=prior(normal(0,10), class="Intercept")+
          prior(normal(0,5), class="b")+
@@ -235,6 +259,29 @@ mbase4ST4<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Date_num_s, d=c(2,1)) + t2(Jul
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
 mbase4ST4<-add_criterion(mbase4ST4, c("loo", "waic"))
+mbase4ST3<-add_criterion(mbase4ST3, c("loo", "waic"))
+
+gam4ST4.2<-gamm(log(CPUE) ~  t2(Latitude_s, Longitude_s, Year, Julian_day, d=c(2,1,1), bs=c("tp", "cr", "cc"), k=c(15,10,5)), random=list(Source=~1), data=filter(PF, CPUE>0))
+
+mbase4ST4.2<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Year, Julian_day, d=c(2,1,1), bs=c("tp", "cr", "cc"), k=c(15,10,5)) + (1|Source), family=hurdle_lognormal(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+mbase4ST4.2<-add_criterion(mbase4ST4.2, c("loo", "waic"))
+
+mbase4ST4.2b<-brm(CPUE ~ t2(Latitude_s, Longitude_s, Year, Julian_day_s, d=c(2,1,1), bs=c("tp", "cr", "cc"), k=c(15,10,5)) + (1|Source), family=hurdle_lognormal(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+mbase4ST4.2b<-add_criterion(mbase4ST4.2b, c("loo", "waic"))
+#1000 transitions using 10 leapfrog steps per transition would take 600 seconds.
+#220388 seconds total
 
 mbase4ST5<-brm(CPUE ~ s(Date_num_s) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source) + (1|Clustered_station), family=hurdle_lognormal(),
        data=PF, cov_ranef = list(Clustered_station=distance_cov),
@@ -244,7 +291,24 @@ mbase4ST5<-brm(CPUE ~ s(Date_num_s) + t2(Julian_day, Year, bs=c("cc", "cr")) + (
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control = list(max_treedepth = 15))
 mbase4ST5<-add_criterion(mbase4ST5, c("loo", "waic"))
-save.image("~/SDP/CopModels.RData")
+
+mbase4ST5.2<-brm(CPUE ~ t2(Julian_day, Year, bs=c("cc", "cr"), k=c(10,5)) + (1|Source) + (1|Clustered_station), family=hurdle_lognormal(),
+       data=PF, cov_ranef = list(Clustered_station=distance_cov),
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control = list(max_treedepth = 15))
+mbase4ST5.2<-add_criterion(mbase4ST5.2, c("loo", "waic"))
+
+mbase4ST5.3<-brm(CPUE ~ t2(Julian_day, Year, bs=c("cc", "cr"), k=c(10,5)) + (1|Source) + (1|Clustered_station) + ar(time=Date2, gr=Station, cov=T), family=hurdle_lognormal(),
+       data=PF, cov_ranef = list(Clustered_station=distance_cov),
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control = list(max_treedepth = 15))
+mbase4ST5.3<-add_criterion(mbase4ST5.3, c("loo", "waic"))
 
 mbase4ST6<-brm(CPUE ~ s(Date_num_s) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source) + (1|Clustered_station) + (1|Clustered_station2), family=hurdle_lognormal(),
        data=PF, cov_ranef = list(Clustered_station=distance_cov),
@@ -332,7 +396,6 @@ m4.6<-brm(CPUE ~ poly(SalSurf_l_s, 3) + s(Temperature_s) + t2(Latitude_s, Longit
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
 m4.6<-add_criterion(m4.6, c("loo", "waic"))
-save(m4.6, file="~/SDP/m4.6.RData")
 
 m4.7<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + s(Date_num_s) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source) + (1|Clustered_station), family=hurdle_lognormal(),
        data=PF, cov_ranef = list(Clustered_station=distance_cov),
@@ -343,9 +406,8 @@ m4.7<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + s(Date_num_s) + t2(Ju
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control = list(max_treedepth = 15, adapt_delta=0.85))
 m4.7<-add_criterion(m4.7, c("loo", "waic"))
-save.image("~/SDP/CopModels.RData")
 
-m4.8<-brm(CPUE ~ -1 + poly(SalSurf_l_s, 2) + s(Temperature_s) + s(Date_num_s) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source) + (1|Clustered_station), family=hurdle_lognormal(),
+m4.8<-brm(CPUE ~ -1 + poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Julian_day, Year, bs=c("cc", "cr"), k=c(10,5)) + (1|Source) + (1|Clustered_station), family=hurdle_lognormal(),
        data=PF, cov_ranef = list(Clustered_station=distance_cov),
        prior=prior(normal(0,5), class="b")+
          prior(cauchy(0,5), class="sigma")+
@@ -353,7 +415,17 @@ m4.8<-brm(CPUE ~ -1 + poly(SalSurf_l_s, 2) + s(Temperature_s) + s(Date_num_s) + 
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control = list(max_treedepth = 13, adapt_delta=0.85))
 m4.8<-add_criterion(m4.8, c("loo", "waic"))
-save.image("~/SDP/CopModels.RData")
+# 1000 transitions using 10 leapfrog steps per transition would take 180 seconds.
+#13674.5 seconds total
+
+m4.9<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longitude_s, Year, Julian_day_s, d=c(2,1,1), bs=c("tp", "cr", "cc"), k=c(15,10,5)) + (1|Source), family=hurdle_lognormal(),
+       data=PF,
+       prior=prior(normal(0,10), class="Intercept")+
+         prior(normal(0,5), class="b")+
+         prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
+m4.9<-add_criterion(m4.9, c("loo", "waic"))
 ```
 
 Adding normal(0,100) prior to intercept in mbase results in exact same intercept estimate
