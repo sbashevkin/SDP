@@ -74,7 +74,9 @@ PF<-zoopComb%>%
   group_by_at(vars(-CPUE, -Volume, -SampleID))%>%
   summarize(CPUE=mean(CPUE), Volume=mean(Volume))%>%
   ungroup()%>%
-  mutate(Count=round(CPUE*Volume))%>%
+  mutate(Count=round(CPUE*Volume),
+         Year_fac=factor(Year),
+         Month=month(Date, label = T))%>%
   mutate_at(vars(Date_num, SalSurf, SalSurf_l, Temperature, Latitude, Longitude, Julian_day), list(s=~(.-mean(., na.rm=T))/sd(., na.rm=T)))
 
 # Subset distance matrix to just those station clusters present in the dataset
@@ -140,6 +142,19 @@ ggplot(PF, aes(x=Secchi, y=log(CPUE+1)))+
 ```
 
 Unclear
+
+Zero proportion
+```{r}
+PF_zero<-PF%>%
+  mutate(Sal_bin=round(SalSurf),
+         Month=month(Date, label=T))%>%
+  group_by(Sal_bin, Month)%>%
+  summarise(Prop_zero=length(which(CPUE==0))/n())
+
+ggplot(PF_zero, aes(x=Sal_bin, y=Prop_zero))+
+  geom_line()+
+  facet_wrap(~Month)
+```
 
 #Model
 
@@ -301,13 +316,27 @@ mbase4ST5.2<-brm(CPUE ~ t2(Julian_day, Year, bs=c("cc", "cr"), k=c(10,5)) + (1|S
        iter = iterations, warmup = warmup, control = list(max_treedepth = 15))
 mbase4ST5.2<-add_criterion(mbase4ST5.2, c("loo", "waic"))
 
-mbase4ST5.3<-brm(CPUE ~ t2(Julian_day, Year, bs=c("cc", "cr"), k=c(10,5)) + (1|Source) + (1|Clustered_station) + ar(time=Date2, gr=Station, cov=T), family=hurdle_lognormal(),
+mbase4ST5.2.1<-brm(CPUE ~ t2(Julian_day, Year_fac, bs=c("cc", "fs"), k=10, m=2) + (1|Source) + (1|Clustered_station), family=hurdle_lognormal(),
        data=PF, cov_ranef = list(Clustered_station=distance_cov),
        prior=prior(normal(0,10), class="Intercept")+
-         prior(normal(0,5), class="b")+
          prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control = list(max_treedepth = 15))
+mbase4ST5.2.1<-add_criterion(mbase4ST5.2.1, c("loo", "waic"))
+
+mbase4ST5.2.2<-brm(CPUE ~ -1+t2(Julian_day_s, Year_fac, bs=c("cc", "fs"), k=10, m=2) + (1|Source) + (1|Clustered_station), family=hurdle_lognormal(),
+       data=PF, cov_ranef = list(Clustered_station=distance_cov),
+       prior=prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control = list(adapt_delta=0.99))
+mbase4ST5.2.2<-add_criterion(mbase4ST5.2.2, c("loo", "waic"))
+# Barely different from mbase4ST5.2.1, so going with simpler model without intercept
+
+mbase4ST5.3<-brm(CPUE ~ -1+t2(Julian_day_s, Year_fac, bs=c("cc", "fs"), k=10, m=2) + (1|Source) + (1|Clustered_station) + ar(time=Date2, gr=Station, cov=T), family=hurdle_lognormal(),
+       data=PF, cov_ranef = list(Clustered_station=distance_cov),
+       prior=prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control = list(max_treedepth = 15, adapt_delta=0.99))
 mbase4ST5.3<-add_criterion(mbase4ST5.3, c("loo", "waic"))
 
 mbase4ST6<-brm(CPUE ~ s(Date_num_s) + t2(Julian_day, Year, bs=c("cc", "cr")) + (1|Source) + (1|Clustered_station) + (1|Clustered_station2), family=hurdle_lognormal(),
@@ -426,6 +455,18 @@ m4.9<-brm(CPUE ~ poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Latitude_s, Longit
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control=list(adapt_delta=0.85))
 m4.9<-add_criterion(m4.9, c("loo", "waic"))
+
+m4.10<-brm(CPUE ~ -1+poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Julian_day_s, Year_fac, bs=c("cc", "fs"), k=10, m=2) + (1|Source) + (1|Clustered_station), family=hurdle_lognormal(),
+       data=PF, cov_ranef = list(Clustered_station=distance_cov),
+       prior=prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control = list(adapt_delta=0.99))
+
+m4.11<-brm(bf(CPUE ~ -1+poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Julian_day_s, Year_fac, bs=c("cc", "fs"), k=10, m=2) + (1|Source) + (1|Clustered_station), hu ~ Sal_surf_s*Month), family=hurdle_lognormal(),
+       data=PF, cov_ranef = list(Clustered_station=distance_cov),
+       prior=prior(cauchy(0,5), class="sigma"),
+       chains=1, cores=1,
+       iter = iterations, warmup = warmup, control = list(adapt_delta=0.99))
 ```
 
 Adding normal(0,100) prior to intercept in mbase results in exact same intercept estimate
