@@ -462,7 +462,7 @@ m4.10<-brm(CPUE ~ -1+poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Julian_day_s, 
        chains=1, cores=1,
        iter = iterations, warmup = warmup, control = list(adapt_delta=0.99))
 
-m4.11<-brm(bf(CPUE ~ -1+poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Julian_day_s, Year_fac, bs=c("cc", "fs"), k=10, m=2) + (1|Source) + (1|Clustered_station), hu ~ Sal_surf_s*Month), family=hurdle_lognormal(),
+m4.11<-brm(bf(CPUE ~ -1+poly(SalSurf_l_s, 2) + s(Temperature_s) + t2(Julian_day_s, Year_fac, bs=c("cc", "fs"), k=10, m=2) + (1|Source) + (1|Clustered_station), hu ~ SalSurf_s*Month), family=hurdle_lognormal(),
        data=PF, cov_ranef = list(Clustered_station=distance_cov),
        prior=prior(cauchy(0,5), class="sigma"),
        chains=1, cores=1,
