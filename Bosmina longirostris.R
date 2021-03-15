@@ -9,6 +9,8 @@ require(brms)
 require(spacetools)
 require(geoR)
 require(corpcor)
+require(gstat)
+require(spacetime)
 
 pp <- function(model){
   prop_zero <- function(x) mean(x == 0)
@@ -278,12 +280,77 @@ mb2M<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc",
 mb2M<-add_criterion(mb2M, c("loo", "waic"))
 
 
-newdata<-expand_grid(SalSurf_l_s=seq(min(BL$SalSurf_l_s), max(BL$SalSurf_l_s), length.out=50), 
-                     Julian_day=seq(min(BL$Julian_day), max(BL$Julian_day), by=7),
+mb2M_full<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 5)) + (1|Clust), hu ~ s(SalSurf_l_s, bs="cr", k=5)),
+          data=BL, family=hurdle_lognormal(),
+          prior=prior(normal(0,10), class="Intercept")+
+            prior(normal(0,5), class="b")+
+            prior(cauchy(0,5), class="sigma"),
+          chains=3, cores=3, control=list(adapt_delta=0.99, max_treedepth = 15),
+          iter = iterations, warmup = warmup,
+          backend = "cmdstanr", threads = threading(2))
+
+# Spatio-temporal variogram -----------------------------------------------
+
+resid_mb2M<-residuals(mb2M_full, type="pearson")
+resid_mb2MB<-residuals(mb2M_full, type="ordinary")
+
+Data_vario<-BL%>%
+  mutate(Resid=resid_mb2M[,"Estimate"],
+         ResidB=resid_mb2MB[,"Estimate"])
+
+Data_coords<-Data_vario%>%
+  st_as_sf(coords=c("Longitude", "Latitude"), crs=4326)%>%
+  st_transform(crs=26910)%>%
+  st_coordinates()%>%
+  as_tibble()%>%
+  mutate(across(c(X,Y), ~(.x-mean(.x))/1000))
+
+Data_vario<-bind_cols(Data_vario%>%
+                        select(Date, Resid, ResidB), Data_coords)
+sp<-SpatialPoints(coords=data.frame(X=Data_vario$X, Y=Data_vario$Y))
+sp2<-STIDF(sp, time=Data_vario$Date, 
+           data=data.frame(Residuals=Data_vario$Resid, ResidualsB=Data_vario$ResidB))
+mb2M_vario<-variogramST(Residuals~1, data=sp2, tunit="weeks", cores=5, tlags=seq(0,30, by=2))
+mb2M_varioB<-variogramST(ResidualsB~1, data=sp2, tunit="weeks", cores=5, tlags=seq(0,30, by=2))
+
+p_time<-ggplot(mb2M_vario, aes(x=timelag, y=gamma, color=spacelag, group=spacelag))+
+  geom_line()+
+  geom_point()+
+  scale_color_viridis_c(name="Distance (km)")+
+  scale_x_continuous()+
+  xlab("Time difference (weeks)")+
+  theme_bw()+
+  theme(legend.justification = "left")
+
+p_space<-ggplot(mb2M_vario, aes(x=spacelag, y=gamma, color=timelag, group=timelag))+
+  geom_line()+
+  geom_point()+
+  scale_color_viridis_c(name="Time difference\n(weeks)")+
+  xlab("Distance (km)")+
+  theme_bw()+
+  theme(legend.justification = "left")
+
+p_variogram<-p_time/p_space+plot_annotation(tag_levels="A")
+
+#ggsave(p_variogram, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Discrete water quality analysis/Manuscripts/Climate change/Figures/variogram.png",
+#       device="png", width=8, height=5, units="in")
+
+
+# Prediction plots --------------------------------------------------------
+
+jdays<-expand_grid(Year=2001, Month=1:12, Day=seq(1, 26, by=5))%>%
+  mutate(Julian_day=yday(ymd(paste(Year, Month, Day, sep="-"))))%>%
+  filter(Julian_day>=min(BL$Julian_day) & Julian_day<=max(BL$Julian_day))
+
+newdata<-expand_grid(Salinity=quantile(BL$SalSurf, probs=seq(0.05, 0.95, by=0.05)), 
+                     Julian_day=jdays$Julian_day,
                      Year=unique(BL$Year))%>%
   mutate(Year_s=(Year-mean(BL$Year))/sd(BL$Year),
-         Salinity=exp(SalSurf_l_s*sd(BL$SalSurf_l)+mean(BL$SalSurf_l)),
-         Julian_day_s=(Julian_day-mean(BL$Julian_day))/sd(BL$Julian_day))
+         SalSurf_l_s=(log(Salinity)-mean(BL$SalSurf_l))/sd(BL$SalSurf_l),
+         Julian_day_s=(Julian_day-mean(BL$Julian_day))/sd(BL$Julian_day))%>%
+  left_join(jdays%>%
+            select(Julian_day, Month, Day),
+            by="Julian_day")
 
 pred<-fitted(mb2M, newdata=newdata, re_formula=NA, scale="response")
 
@@ -292,18 +359,43 @@ newdata_pred<-newdata%>%
          l95=pred[,"Q2.5"],
          u95=pred[,"Q97.5"])
 
-ggplot(filter(newdata_pred, Salinity%in%c(unique(newdata$Salinity)[c(1,10,20,30,40,50)]) & Year%in%c(1975, 1985, 1995, 2005, 2015)),
-       aes(x=Julian_day, y=Pred, ymin=l95, ymax=u95, color=log(Salinity), fill=log(Salinity), group=Salinity))+
-  geom_ribbon(aes(x=Julian_day, y=Pred, ymin=l95, ymax=u95, fill=log(Salinity)), alpha=0.4)+
-  geom_line()+
-  facet_wrap(~Year)+
-  scale_color_viridis_c(aesthetics = c("color", "fill"))+
+p_season<-ggplot(filter(newdata_pred, Salinity%in%unique(newdata$Salinity)[seq(1,19, by=6)] & Year%in%seq(1975, 2020, by=5)),
+       aes(x=Julian_day, y=Pred, ymin=l95, ymax=u95, fill=Salinity, group=Salinity))+
+  geom_ribbon(alpha=0.4)+
+  geom_line(aes(color=Salinity))+
+  facet_wrap(~Year, scales = "free_y")+
+  scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
+                        breaks=round(unique(newdata$Salinity)[seq(1,19, by=6)], 3), 
+                        limits=round(unique(newdata$Salinity)[c(1,19)], 3))+
+  ylab("CPUE")+
+  xlab("Julian day")+
   theme_bw()
 
-ggplot(filter(newdata_pred, Salinity%in%c(unique(newdata$Salinity)[c(1,10,20,30,40,50)]) & Julian_day%in%c(1975, 1985, 1995, 2005, 2015)),
-       aes(x=Julian_day, y=Pred, ymin=l95, ymax=u95, color=log(Salinity), fill=log(Salinity), group=Salinity))+
-  geom_ribbon(aes(x=Julian_day, y=Pred, ymin=l95, ymax=u95, fill=log(Salinity)), alpha=0.4)+
-  geom_line()+
-  facet_wrap(~Year)+
+p_year<-ggplot(filter(newdata_pred, Salinity%in%unique(newdata$Salinity)[seq(1,19, by=6)] & Day==16),
+       aes(x=Year, y=Pred, ymin=l95, ymax=u95, fill=Salinity, group=Salinity))+
+  geom_ribbon(alpha=0.4)+
+  geom_line(aes(color=Salinity))+
+  facet_wrap(~month(Month, label=T), scales = "free_y")+
+  scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
+                        breaks=round(unique(newdata$Salinity)[seq(1,19, by=6)], 3), 
+                        limits=round(unique(newdata$Salinity)[c(1,19)], 3))+
+  ylab("CPUE")+
+  theme_bw()+
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+
+p_salinity<-ggplot(filter(newdata_pred, Year%in%seq(1975, 2020, by=10) & Day==16),
+       aes(x=Salinity, y=Pred, ymin=l95, ymax=u95, fill=Year, group=Year))+
+  geom_ribbon(alpha=0.4)+
+  geom_line(aes(color=Year))+
+  facet_wrap(~month(Month, label=T), scales = "free_y")+
+  scale_x_continuous(trans="log", breaks=round(exp(seq(log(min(newdata$Salinity)), log(max(newdata$Salinity)), length.out=5)), 3),  minor_breaks = NULL)+
   scale_color_viridis_c(aesthetics = c("color", "fill"))+
-  theme_bw()
+  ylab("CPUE")+
+  theme_bw()+
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+
+ggsave(p_season, file="Figures/Bosmina_season.png", device="png", units = "in", width=8, height=6)
+
+ggsave(p_year, file="Figures/Bosmina_year.png", device="png", units = "in", width=8, height=6)
+
+ggsave(p_salinity, file="Figures/Bosmina_salinity.png", device="png", units = "in", width=8, height=6)
