@@ -43,6 +43,10 @@ Delta_transitioned <- spacetools::Maptransitioner(spacetools::Delta)
 distance <- Waterdist(Water_map=spacetools::Delta, Points=Stations_clust, Latitude_column=Latitude, 
                       Longitude_column=Longitude, PointID_column=Clust, Water_map_transitioned = Delta_transitioned)
 
+
+# This was fit before 20mm 2019 data incorporated into zooper -------------
+
+
 BL<-zoopComb%>%
   filter(Taxname=="Bosmina longirostris")%>%
   left_join(zoopEnvComb%>%
@@ -332,8 +336,7 @@ p_space<-ggplot(mb2M_vario, aes(x=spacelag, y=gamma, color=timelag, group=timela
 
 p_variogram<-p_time/p_space+plot_annotation(tag_levels="A")
 
-#ggsave(p_variogram, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Discrete water quality analysis/Manuscripts/Climate change/Figures/variogram.png",
-#       device="png", width=8, height=5, units="in")
+ggsave(p_variogram, filename="Figures/Bosmina_variogram.png", device="png", width=8, height=5, units="in")
 
 
 # Prediction plots --------------------------------------------------------
