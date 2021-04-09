@@ -296,11 +296,9 @@ mb2M_full<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c(
 # Spatio-temporal variogram -----------------------------------------------
 
 resid_mb2M<-residuals(mb2M_full, type="pearson")
-resid_mb2MB<-residuals(mb2M_full, type="ordinary")
 
 Data_vario<-BL%>%
-  mutate(Resid=resid_mb2M[,"Estimate"],
-         ResidB=resid_mb2MB[,"Estimate"])
+  mutate(Resid=resid_mb2M[,"Estimate"])
 
 Data_coords<-Data_vario%>%
   st_as_sf(coords=c("Longitude", "Latitude"), crs=4326)%>%
@@ -310,12 +308,11 @@ Data_coords<-Data_vario%>%
   mutate(across(c(X,Y), ~(.x-mean(.x))/1000))
 
 Data_vario<-bind_cols(Data_vario%>%
-                        select(Date, Resid, ResidB), Data_coords)
+                        select(Date, Resid), Data_coords)
 sp<-SpatialPoints(coords=data.frame(X=Data_vario$X, Y=Data_vario$Y))
 sp2<-STIDF(sp, time=Data_vario$Date, 
-           data=data.frame(Residuals=Data_vario$Resid, ResidualsB=Data_vario$ResidB))
+           data=data.frame(Residuals=Data_vario$Resid))
 mb2M_vario<-variogramST(Residuals~1, data=sp2, tunit="weeks", cores=5, tlags=seq(0,30, by=2))
-mb2M_varioB<-variogramST(ResidualsB~1, data=sp2, tunit="weeks", cores=5, tlags=seq(0,30, by=2))
 
 p_time<-ggplot(mb2M_vario, aes(x=timelag, y=gamma, color=spacelag, group=spacelag))+
   geom_line()+
@@ -341,64 +338,14 @@ ggsave(p_variogram, filename="Figures/Bosmina_variogram.png", device="png", widt
 
 # Prediction plots --------------------------------------------------------
 
-jdays<-expand_grid(Year=2001, Month=1:12, Day=seq(1, 26, by=5))%>%
-  mutate(Julian_day=yday(ymd(paste(Year, Month, Day, sep="-"))))%>%
-  filter(Julian_day>=min(BL$Julian_day) & Julian_day<=max(BL$Julian_day))
+BL_preds<-zoop_predict(mb2, BL)
 
-newdata<-expand_grid(Salinity=quantile(BL$SalSurf, probs=seq(0.05, 0.95, by=0.05)), 
-                     Julian_day=jdays$Julian_day,
-                     Year=unique(BL$Year))%>%
-  mutate(Year_s=(Year-mean(BL$Year))/sd(BL$Year),
-         SalSurf_l_s=(log(Salinity)-mean(BL$SalSurf_l))/sd(BL$SalSurf_l),
-         Julian_day_s=(Julian_day-mean(BL$Julian_day))/sd(BL$Julian_day))%>%
-  left_join(jdays%>%
-            select(Julian_day, Month, Day),
-            by="Julian_day")
+BL_salinity<-zoop_plot(BL_preds, "salinity")
+BL_year<-zoop_plot(BL_preds, "year")
+BL_season<-zoop_plot(BL_preds, "season")
 
-pred<-fitted(mb2M, newdata=newdata, re_formula=NA, scale="response")
+ggsave(BL_season, file="Figures/Bosmina_season.png", device="png", units = "in", width=8, height=6)
 
-newdata_pred<-newdata%>%
-  mutate(Pred=pred[,"Estimate"],
-         l95=pred[,"Q2.5"],
-         u95=pred[,"Q97.5"])
+ggsave(BL_year, file="Figures/Bosmina_year.png", device="png", units = "in", width=8, height=6)
 
-p_season<-ggplot(filter(newdata_pred, Salinity%in%unique(newdata$Salinity)[seq(1,19, by=6)] & Year%in%seq(1975, 2020, by=5)),
-       aes(x=Julian_day, y=Pred, ymin=l95, ymax=u95, fill=Salinity, group=Salinity))+
-  geom_ribbon(alpha=0.4)+
-  geom_line(aes(color=Salinity))+
-  facet_wrap(~Year, scales = "free_y")+
-  scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
-                        breaks=round(unique(newdata$Salinity)[seq(1,19, by=6)], 3), 
-                        limits=round(unique(newdata$Salinity)[c(1,19)], 3))+
-  ylab("CPUE")+
-  xlab("Julian day")+
-  theme_bw()
-
-p_year<-ggplot(filter(newdata_pred, Salinity%in%unique(newdata$Salinity)[seq(1,19, by=6)] & Day==16),
-       aes(x=Year, y=Pred, ymin=l95, ymax=u95, fill=Salinity, group=Salinity))+
-  geom_ribbon(alpha=0.4)+
-  geom_line(aes(color=Salinity))+
-  facet_wrap(~month(Month, label=T), scales = "free_y")+
-  scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
-                        breaks=round(unique(newdata$Salinity)[seq(1,19, by=6)], 3), 
-                        limits=round(unique(newdata$Salinity)[c(1,19)], 3))+
-  ylab("CPUE")+
-  theme_bw()+
-  theme(axis.text.x=element_text(angle=45, hjust=1))
-
-p_salinity<-ggplot(filter(newdata_pred, Year%in%seq(1975, 2020, by=10) & Day==16),
-       aes(x=Salinity, y=Pred, ymin=l95, ymax=u95, fill=Year, group=Year))+
-  geom_ribbon(alpha=0.4)+
-  geom_line(aes(color=Year))+
-  facet_wrap(~month(Month, label=T), scales = "free_y")+
-  scale_x_continuous(trans="log", breaks=round(exp(seq(log(min(newdata$Salinity)), log(max(newdata$Salinity)), length.out=5)), 3),  minor_breaks = NULL)+
-  scale_color_viridis_c(aesthetics = c("color", "fill"))+
-  ylab("CPUE")+
-  theme_bw()+
-  theme(axis.text.x=element_text(angle=45, hjust=1))
-
-ggsave(p_season, file="Figures/Bosmina_season.png", device="png", units = "in", width=8, height=6)
-
-ggsave(p_year, file="Figures/Bosmina_year.png", device="png", units = "in", width=8, height=6)
-
-ggsave(p_salinity, file="Figures/Bosmina_salinity.png", device="png", units = "in", width=8, height=6)
+ggsave(BL_salinity, file="Figures/Bosmina_salinity.png", device="png", units = "in", width=8, height=6)

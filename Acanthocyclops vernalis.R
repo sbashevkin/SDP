@@ -11,6 +11,7 @@ require(geoR)
 require(corpcor)
 require(gstat)
 require(spacetime)
+source("Utility functions.R")
 
 pp <- function(model){
   prop_zero <- function(x) mean(x == 0)
@@ -20,6 +21,8 @@ pp <- function(model){
   p$zero<-pp_check(model, type="stat", stat=prop_zero)
   
   p$dist<-pp_check(model)+scale_x_log10()
+  
+  p$scatter<-pp_check(model, type="scatter_avg")+scale_y_log10()+scale_x_log10()
   
   return(p)
 }
@@ -146,7 +149,35 @@ mb2<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", 
           prior=prior(normal(0,10), class="Intercept")+
             prior(normal(0,5), class="b")+
             prior(cauchy(0,5), class="sigma"),
-          chains=1, cores=1, control=list(adapt_delta=0.99),
+          chains=1, cores=1, control=list(adapt_delta=0.995, max_treedepth=15),
           iter = iterations, warmup = warmup,
-          backend = "cmdstanr", threads = threading(5))
-mb2<-add_criterion(mb2, c("loo", "waic"))
+          backend = "cmdstanr", threads = threading(4))
+# No warnings
+mb2<-add_criterion(mb2, c("loo", "waic"), moment_match = TRUE)
+
+mb2_check<-pp(mb2)
+
+mb2_full<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 5)) + (1|Clust), hu ~ s(SalSurf_l_s, bs="cr", k=5)),
+         data=AV, family=hurdle_lognormal(),
+         prior=prior(normal(0,10), class="Intercept")+
+           prior(normal(0,5), class="b")+
+           prior(cauchy(0,5), class="sigma"),
+         chains=3, cores=3, control=list(adapt_delta=0.995, max_treedepth=15),
+         iter = iterations, warmup = warmup,
+         backend = "cmdstanr", threads = threading(2))
+
+# 10:58 AM 4/9/2021
+
+# predict -----------------------------------------------------------------
+
+AV_preds<-zoop_predict(mb2, AV)
+
+AV_salinity<-zoop_plot(AV_preds, "salinity")
+AV_year<-zoop_plot(AV_preds, "year")
+AV_season<-zoop_plot(AV_preds, "season")
+
+ggsave(AV_salinity, file="Figures/Acanthocyclops_season.png", device="png", units = "in", width=8, height=6)
+
+ggsave(AV_year, file="Figures/Acanthocyclops_year.png", device="png", units = "in", width=8, height=6)
+
+ggsave(AV_season, file="Figures/Acanthocyclops_salinity.png", device="png", units = "in", width=8, height=6)
