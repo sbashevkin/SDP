@@ -1,3 +1,17 @@
+pp <- function(model){
+  prop_zero <- function(x) mean(x == 0)
+  
+  p<-list()
+  
+  p$zero<-pp_check(model, type="stat", stat=prop_zero)
+  
+  p$dist<-pp_check(model)+scale_x_log10()
+  
+  p$scatter<-pp_check(model, type="scatter_avg")+scale_y_log10()+scale_x_log10()
+  
+  return(p)
+}
+
 zoop_predict<-function(model, data){
   jdays<-expand_grid(Year=2001, Month=1:12, Day=seq(1, 26, by=5))%>%
     mutate(Julian_day=yday(ymd(paste(Year, Month, Day, sep="-"))))%>%
