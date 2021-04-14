@@ -47,55 +47,55 @@ zoop_plot<-function(data, type){
   if(!type%in%c("season", "year", "salinity")){
     stop('Valid types are "season", "year", or "salinity."')
   }
-
-
-if(type=="season"){
-  data<-filter(data, Salinity%in%unique(data$Salinity)[seq(1,19, by=6)] & Year%in%seq(1975, 2020, by=5))
-} else{
-  if(type=="year"){
-    data<-filter(data, Salinity%in%unique(data$Salinity)[seq(1,19, by=6)] & Day==16)
-  }else{
-    data<-filter(data, Year%in%seq(1975, 2020, by=10) & Day==16)
+  
+  
+  if(type=="season"){
+    data<-filter(data, Salinity%in%unique(data$Salinity)[seq(1,19, by=6)] & Year%in%seq(1975, 2020, by=5))
+  } else{
+    if(type=="year"){
+      data<-filter(data, Salinity%in%unique(data$Salinity)[seq(1,19, by=6)] & Day==16)
+    }else{
+      data<-filter(data, Year%in%seq(1975, 2020, by=10) & Day==16)
+    }
   }
+  
+  xvar<-case_when(type=="season" ~ "Julian_day", 
+                  type=="year" ~ "Year", 
+                  type=="salinity" ~ "Salinity")
+  
+  fillvar<-case_when(type=="season" ~ "Salinity", 
+                     type=="year" ~ "Salinity", 
+                     type=="salinity" ~ "Year")
+  
+  facetvar<-case_when(type=="season" ~ "Year", 
+                      type=="year" ~ "Month2", 
+                      type=="salinity" ~ "Month2")
+  
+  xlabel<-str_replace(xvar, "_", " ")
+  
+  if(type%in%c("season", "year")){
+    scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
+                                       breaks=round(unique(data$Salinity), 3), 
+                                       limits=unique(data$Salinity)[c(1,19)]))
+  }else{
+    scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill")),
+                 scale_x_continuous(trans="log", breaks=round(exp(seq(log(min(data$Salinity)), log(max(data$Salinity)), length.out=5)), 3),  minor_breaks = NULL))
+  }
+  
+  p<-ggplot(data, aes(x=.data[[xvar]], y=Pred, ymin=l95, ymax=u95, fill=.data[[fillvar]], group=.data[[fillvar]]))+
+    geom_ribbon(alpha=0.4)+
+    geom_line(aes(color=.data[[fillvar]]))+
+    facet_wrap(~.data[[facetvar]], scales = "free_y")+
+    scales+
+    ylab("CPUE")+
+    xlab(xlabel)+
+    theme_bw()+
+    theme(axis.text.x=element_text(angle=45, hjust=1))
+  
+  return(p)
 }
 
-xvar<-case_when(type=="season" ~ "Julian_day", 
-                type=="year" ~ "Year", 
-                type=="salinity" ~ "Salinity")
-
-fillvar<-case_when(type=="season" ~ "Salinity", 
-                   type=="year" ~ "Salinity", 
-                   type=="salinity" ~ "Year")
-
-facetvar<-case_when(type=="season" ~ "Year", 
-                    type=="year" ~ "Month2", 
-                    type=="salinity" ~ "Month2")
-
-xlabel<-str_replace(xvar, "_", " ")
-
-if(type%in%c("season", "year")){
-  scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
-                                     breaks=round(unique(data$Salinity), 3), 
-                                     limits=unique(data$Salinity)[c(1,19)]))
-}else{
-  scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill")),
-               scale_x_continuous(trans="log", breaks=round(exp(seq(log(min(data$Salinity)), log(max(data$Salinity)), length.out=5)), 3),  minor_breaks = NULL))
-}
-
-p<-ggplot(data, aes(x=.data[[xvar]], y=Pred, ymin=l95, ymax=u95, fill=.data[[fillvar]], group=.data[[fillvar]]))+
-  geom_ribbon(alpha=0.4)+
-  geom_line(aes(color=.data[[fillvar]]))+
-  facet_wrap(~.data[[facetvar]], scales = "free_y")+
-  scales+
-  ylab("CPUE")+
-  xlab(xlabel)+
-  theme_bw()+
-  theme(axis.text.x=element_text(angle=45, hjust=1))
-
-return(p)
-}
-
-zoop_vario<-function(model, data){
+zoop_vario<-function(model, data, cores=4){
   resids<-residuals(model, type="pearson")
   
   Data_vario<-data%>%
@@ -113,9 +113,14 @@ zoop_vario<-function(model, data){
   sp<-SpatialPoints(coords=data.frame(X=Data_vario$X, Y=Data_vario$Y))
   sp2<-STIDF(sp, time=Data_vario$Date, 
              data=data.frame(Residuals=Data_vario$Resid))
-  mb2M_vario<-variogramST(Residuals~1, data=sp2, tunit="weeks", cores=5, tlags=seq(0,30, by=2))
+  mb2M_vario<-variogramST(Residuals~1, data=sp2, tunit="weeks", cores=cores, tlags=seq(0,30, by=2))
   
-  p_time<-ggplot(mb2M_vario, aes(x=timelag, y=gamma, color=spacelag, group=spacelag))+
+  return(mb2M_vario)
+}
+
+zoop_vario_plot<-function(vario){
+  require(patchwork)
+  p_time<-ggplot(vario, aes(x=timelag, y=gamma, color=spacelag, group=spacelag))+
     geom_line()+
     geom_point()+
     scale_color_viridis_c(name="Distance (km)")+
@@ -124,7 +129,7 @@ zoop_vario<-function(model, data){
     theme_bw()+
     theme(legend.justification = "left")
   
-  p_space<-ggplot(mb2M_vario, aes(x=spacelag, y=gamma, color=timelag, group=timelag))+
+  p_space<-ggplot(vario, aes(x=spacelag, y=gamma, color=timelag, group=timelag))+
     geom_line()+
     geom_point()+
     scale_color_viridis_c(name="Time difference\n(weeks)")+
@@ -133,6 +138,22 @@ zoop_vario<-function(model, data){
     theme(legend.justification = "left")
   
   p_variogram<-p_time/p_space+plot_annotation(tag_levels="A")
+  return(p_variogram)
+}
+
+zoop_stations<-function(model, stations){
   
-  return(list(vario=mb2M_vario, plot=p_variogram))
+  station_intercepts<-posterior_summary(model, pars="r_Clust")%>%
+    as_tibble(rownames="Clust")%>%
+    mutate(Clust=as.numeric(str_extract(Clust, "(\\d)+")))%>%
+    left_join(stations,
+              by="Clust")
+  
+  p_intercepts<-ggplot()+
+    geom_sf(data=deltamapr::WW_Delta%>%st_transform(crs=4326), fill="gray90", color="gray90")+
+    geom_point(data=station_intercepts, aes(x=Longitude, y=Latitude, fill=Estimate), color="black", shape=21, alpha=0.7)+
+    scale_fill_continuous_diverging(guide=guide_colorbar(barheight=10), palette="Blue-Red 3", name="Varying\nintercept\nestimate")+
+    theme_bw()
+  
+  return(p_intercepts)
 }

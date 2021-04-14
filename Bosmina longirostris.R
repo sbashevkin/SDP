@@ -11,6 +11,9 @@ require(geoR)
 require(corpcor)
 require(gstat)
 require(spacetime)
+require(colorspace)
+require(stringr)
+source("Utility functions.R")
 
 pp <- function(model){
   prop_zero <- function(x) mean(x == 0)
@@ -333,19 +336,25 @@ p_space<-ggplot(mb2M_vario, aes(x=spacelag, y=gamma, color=timelag, group=timela
 
 p_variogram<-p_time/p_space+plot_annotation(tag_levels="A")
 
-ggsave(p_variogram, filename="Figures/Bosmina_variogram.png", device="png", width=8, height=5, units="in")
+ggsave(p_variogram, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Bosmina_variogram.png", device="png", width=8, height=5, units="in")
 
 
 # Prediction plots --------------------------------------------------------
 
-BL_preds<-zoop_predict(mb2, BL)
+BL_preds<-zoop_predict(mb2M_full, BL)
 
 BL_salinity<-zoop_plot(BL_preds, "salinity")
 BL_year<-zoop_plot(BL_preds, "year")
 BL_season<-zoop_plot(BL_preds, "season")
 
-ggsave(BL_season, file="Figures/Bosmina_season.png", device="png", units = "in", width=8, height=6)
+ggsave(BL_season, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Bosmina_season.png", device="png", units = "in", width=8, height=6)
 
-ggsave(BL_year, file="Figures/Bosmina_year.png", device="png", units = "in", width=8, height=6)
+ggsave(BL_year, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Bosmina_year.png", device="png", units = "in", width=8, height=6)
 
-ggsave(BL_salinity, file="Figures/Bosmina_salinity.png", device="png", units = "in", width=8, height=6)
+ggsave(BL_salinity, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Bosmina_salinity.png", device="png", units = "in", width=8, height=6)
+
+# Plot station intercepts -------------------------------------------------
+
+p_intercepts<-zoop_stations(mb2M_full, select(Stations_clust, Clust, Latitude, Longitude))
+
+ggsave(p_intercepts, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Bosmina_intercepts.png", device="png", units = "in", width=9, height=7)

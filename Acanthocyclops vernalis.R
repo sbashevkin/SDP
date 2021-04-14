@@ -11,6 +11,8 @@ require(geoR)
 require(corpcor)
 require(gstat)
 require(spacetime)
+require(colorspace)
+require(stringr)
 source("Utility functions.R")
 
 pp <- function(model){
@@ -165,19 +167,32 @@ mb2_full<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("
          chains=3, cores=3, control=list(adapt_delta=0.995, max_treedepth=15),
          iter = iterations, warmup = warmup,
          backend = "cmdstanr", threads = threading(2))
+# 1 divergent transition, which shouldn't be a problem https://stats.stackexchange.com/questions/432479/divergent-transitions-in-stan
 
-# 10:58 AM 4/9/2021
 
+# Model checks ------------------------------------------------------------
+
+mb2_full_check<-pp(mb2_full)
+mb2_full_vario<-zoop_vario(mb2_full, AV, cores=5)
+mb2_full_vario_plot<-zoop_vario_plot(mb2_full_vario)
+ggsave(mb2_full_vario_plot, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_variogram.png", device="png", width=8, height=5, units="in")
 # predict -----------------------------------------------------------------
 
-AV_preds<-zoop_predict(mb2, AV)
+AV_preds<-zoop_predict(mb2_full, AV)
 
 AV_salinity<-zoop_plot(AV_preds, "salinity")
 AV_year<-zoop_plot(AV_preds, "year")
 AV_season<-zoop_plot(AV_preds, "season")
 
-ggsave(AV_salinity, file="Figures/Acanthocyclops_season.png", device="png", units = "in", width=8, height=6)
+ggsave(AV_salinity, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_season.png", device="png", units = "in", width=8, height=6)
 
-ggsave(AV_year, file="Figures/Acanthocyclops_year.png", device="png", units = "in", width=8, height=6)
+ggsave(AV_year, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_year.png", device="png", units = "in", width=8, height=6)
 
-ggsave(AV_season, file="Figures/Acanthocyclops_salinity.png", device="png", units = "in", width=8, height=6)
+ggsave(AV_season, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_salinity.png", device="png", units = "in", width=8, height=6)
+
+
+# Plot station intercepts -------------------------------------------------
+
+p_intercepts<-zoop_stations(mb2_full, select(Stations_clust, Clust, Latitude, Longitude))
+
+ggsave(p_intercepts, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_intercepts.png", device="png", units = "in", width=9, height=7)
