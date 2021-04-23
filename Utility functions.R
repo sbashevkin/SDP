@@ -1,13 +1,13 @@
-pp <- function(model){
+pp <- function(model, resp=NULL){
   prop_zero <- function(x) mean(x == 0)
   
   p<-list()
   
-  p$zero<-pp_check(model, type="stat", stat=prop_zero)
+  p$zero<-pp_check(model, type="stat", stat=prop_zero, resp=resp)
   
-  p$dist<-pp_check(model)+scale_x_log10()
+  p$dist<-pp_check(model, resp=resp)+scale_x_log10()
   
-  p$scatter<-pp_check(model, type="scatter_avg")+scale_y_log10()+scale_x_log10()
+  p$scatter<-pp_check(model, type="scatter_avg", resp=resp)+scale_y_log10()+scale_x_log10()
   
   return(p)
 }
@@ -73,24 +73,43 @@ zoop_plot<-function(data, type){
   
   xlabel<-str_replace(xvar, "_", " ")
   
-  if(type%in%c("season", "year")){
+  if(type=="season"){
     scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
-                                       breaks=round(unique(data$Salinity), 3), 
-                                       limits=unique(data$Salinity)[c(1,19)]))
+                                       breaks=unique(data$Salinity), 
+                                       labels=round(unique(data$Salinity), 3),
+                                       limits=range(data$Salinity)),
+                 scale_x_continuous(breaks=c(1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335,
+                                             15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349), 
+                                    labels=c(rep("", 12), as.character(month(1:12, label = T))), limits=c(0,366),
+                                    expand=expansion(0,0)),
+                 theme(axis.ticks.x = element_line(color = c(rep("black", 12), rep(NA, 12))), axis.text.x=element_text(angle=45, hjust=1),
+                       panel.grid.minor=element_blank(), panel.grid.major.x=element_line(color = c(rep("grey92", 12), rep(NA, 12)))))
   }else{
-    scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill")),
-                 scale_x_continuous(trans="log", breaks=round(exp(seq(log(min(data$Salinity)), log(max(data$Salinity)), length.out=5)), 3),  minor_breaks = NULL))
+    if(type=="year"){
+      scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
+                                         breaks=unique(data$Salinity), 
+                                         labels=round(unique(data$Salinity), 3),
+                                         limits=range(data$Salinity)),
+                   theme(axis.text.x=element_text(angle=45, hjust=1)))
+      
+    }else{
+      scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill")),
+                   scale_x_continuous(trans="log", breaks=round(exp(seq(log(min(data$Salinity)), log(max(data$Salinity)), length.out=5)), 3),  minor_breaks = NULL),
+                   theme(axis.text.x=element_text(angle=45, hjust=1)))
+    }
+    
   }
   
   p<-ggplot(data, aes(x=.data[[xvar]], y=Pred, ymin=l95, ymax=u95, fill=.data[[fillvar]], group=.data[[fillvar]]))+
     geom_ribbon(alpha=0.4)+
     geom_line(aes(color=.data[[fillvar]]))+
     facet_wrap(~.data[[facetvar]], scales = "free_y")+
-    scales+
+    scale_y_continuous(expand=c(0,0))+
     ylab("CPUE")+
     xlab(xlabel)+
     theme_bw()+
-    theme(axis.text.x=element_text(angle=45, hjust=1))
+    scales
+  
   
   return(p)
 }

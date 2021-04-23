@@ -11,14 +11,17 @@ require(geoR)
 require(corpcor)
 require(gstat)
 require(spacetime)
+require(colorspace)
+require(stringr)
 source("Utility functions.R")
 
 
 # Prepare data ------------------------------------------------------------
 
-#@ Cluster nearby stations
+# Cluster nearby stations
 Stations<-zooper::stations%>%
-  mutate(Station=paste(Source, Station))%>%
+  mutate(Source=recode(Source, twentymm="20mm"),
+    Station=paste(Source, Station))%>%
   filter(Source!="YBFMP")%>%
   bind_rows(zooper::stationsEMPEZ%>%
               mutate(Station=paste("EMP", Station, year(Date), month(Date), day(Date))))%>%
@@ -32,6 +35,8 @@ Stations_final <- unnest(Stations_clust, Station)
 
 ## Make data
 
+## Still some NAS?
+
 AS<-Zoopsynther("Taxa", Taxa="Acartiella")%>%
   filter(Taxlifestage%in%c("Acartiella_all_Meso Adult", "Acartiella_all_Meso Juvenile"))%>%
   mutate(Taxname=recode(Taxname, `Acartiella_all_Meso`="Acartiella"))%>%
@@ -42,6 +47,7 @@ AS<-Zoopsynther("Taxa", Taxa="Acartiella")%>%
          Julian_day = yday(Date))%>%
   drop_na(Date, SalSurf, Temperature, Latitude, Longitude, CPUE)%>%
   pivot_wider(names_from=c(Lifestage), values_from=CPUE)%>%
+  filter(!is.na(Adult) & !is.na(Juvenile))%>%
   mutate(Station=if_else(Station%in%unique(zooper::stationsEMPEZ$Station), paste(Source, Station, year(Date), month(Date), day(Date)), paste(Source, Station)))%>%
   left_join(Stations_final%>%
               select(Clust, Station),
@@ -76,6 +82,8 @@ AS<-AS%>%
   mutate(Sal_cat=factor(Sal_cat, levels=Sal_cats$Name),
          Sal_cat_int=as.integer(Sal_cat))
 
+AS_long<-pivot_longer(AS, c(Adult, Juvenile), names_to="Lifestage", values_to="CPUE")%>%
+  mutate(Lifestage=factor(Lifestage))
 
 # Plots -------------------------------------------------------------------
 
@@ -100,13 +108,31 @@ ggplot(AS, aes(x=SalSurf_l, y=Juvenile))+
 
 # Models ------------------------------------------------------------------
 
+iterations <- 5e3
+warmup <- iterations/4
+
 # Try a bivariate model with both life stages. 
 
-mb2<-brm(bf(mvbind(Adult, Juvenile) ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 5)) + (1|p|Clust), hu ~ s(SalSurf_l_s, bs="cr", k=5)),
-         data=AV, family=hurdle_lognormal(),
-         prior=prior(normal(0,10), class="Intercept")+
-           prior(normal(0,5), class="b")+
-           prior(cauchy(0,5), class="sigma"),
-         chains=1, cores=1, control=list(adapt_delta=0.995, max_treedepth=15),
+mb2<-brm(bf(mvbind(Adult, Juvenile) ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 5)) + (1|p|Clust), hu ~ s(SalSurf_l_s, bs="cr", k=5))+
+           set_rescor(FALSE),
+         data=AS, family=hurdle_lognormal(),
+         prior=prior(normal(0,10), class="Intercept", resp = "Adult")+
+           prior(normal(0,10), class="Intercept", resp = "Juvenile")+
+           prior(normal(0,5), class="b", resp = "Adult")+
+           prior(normal(0,5), class="b", resp = "Juvenile")+
+           prior(cauchy(0,5), class="sigma", resp = "Adult")+
+           prior(cauchy(0,5), class="sigma", resp = "Juvenile"),
+         chains=1, cores=1,
          iter = iterations, warmup = warmup,
-         backend = "cmdstanr", threads = threading(4))
+         backend = "cmdstanr", threads = threading(5))
+# Model fit looks bad, a few divergent transitions
+
+mb3<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, Lifestage, d=c(1,1,1,1), bs=c("cc", "cr", "cr", "fs"), k=c(13, 5, 5)) + (1|Clust), hu ~ t2(SalSurf_l_s, Lifestage, bs=c("cr", "fs"), k=5)),
+         data=AS_long, family=hurdle_lognormal(),
+         prior=prior(normal(0,10), class="Intercept")+
+           prior(cauchy(0,5), class="sigma"),
+         chains=1, cores=1,
+         iter = iterations, warmup = warmup,
+         backend = "cmdstanr", threads = threading(5))
+# 10 of 3750 (0.0%) transitions ended with a divergence.
+# 2172 of 3750 (58.0%) transitions hit the maximum treedepth limit of 10 or 2^10-1 leapfrog steps

@@ -15,18 +15,6 @@ require(colorspace)
 require(stringr)
 source("Utility functions.R")
 
-pp <- function(model){
-  prop_zero <- function(x) mean(x == 0)
-  
-  p<-list()
-  
-  p$zero<-pp_check(model, type="stat", stat=prop_zero)
-  
-  p$dist<-pp_check(model)+scale_x_log10()
-  
-  return(p)
-}
-
 # Cluster nearby stations
 Stations<-zooper::stations%>%
   mutate(Station=paste(Source, Station))%>%

@@ -15,20 +15,6 @@ require(colorspace)
 require(stringr)
 source("Utility functions.R")
 
-pp <- function(model){
-  prop_zero <- function(x) mean(x == 0)
-  
-  p<-list()
-  
-  p$zero<-pp_check(model, type="stat", stat=prop_zero)
-  
-  p$dist<-pp_check(model)+scale_x_log10()
-  
-  p$scatter<-pp_check(model, type="scatter_avg")+scale_y_log10()+scale_x_log10()
-  
-  return(p)
-}
-
 # Cluster nearby stations
 Stations<-zooper::stations%>%
   mutate(Station=paste(Source, Station))%>%
@@ -184,11 +170,11 @@ AV_salinity<-zoop_plot(AV_preds, "salinity")
 AV_year<-zoop_plot(AV_preds, "year")
 AV_season<-zoop_plot(AV_preds, "season")
 
-ggsave(AV_salinity, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_season.png", device="png", units = "in", width=8, height=6)
+ggsave(AV_season, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_season.png", device="png", units = "in", width=8, height=6)
 
 ggsave(AV_year, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_year.png", device="png", units = "in", width=8, height=6)
 
-ggsave(AV_season, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_salinity.png", device="png", units = "in", width=8, height=6)
+ggsave(AV_salinity, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_salinity.png", device="png", units = "in", width=8, height=6)
 
 
 # Plot station intercepts -------------------------------------------------
