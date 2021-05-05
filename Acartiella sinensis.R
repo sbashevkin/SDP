@@ -37,8 +37,11 @@ Stations_final <- unnest(Stations_clust, Station)
 
 ## Still some NAS?
 
+# Introduced in 1993. Surveys started counting Adults in 1994 or the inception of the survey.
+# Juveniles have only been counted since 2006
+
 AS<-Zoopsynther("Taxa", Taxa="Acartiella")%>%
-  filter(Taxlifestage%in%c("Acartiella_all_Meso Adult", "Acartiella_all_Meso Juvenile"))%>%
+  filter((Taxlifestage=="Acartiella_all_Meso Adult" & Year>=1994)| (Taxlifestage=="Acartiella_all_Meso Juvenile" & Year>=2006))%>%
   mutate(Taxname=recode(Taxname, `Acartiella_all_Meso`="Acartiella"))%>%
   select(-Taxlifestage, -SizeClass, -Genus, -Family, -Order, -Class, -Phylum, -Taxatype, -Species, -Orphan, -Undersampled)%>%
   filter(!(Year==2019 & Source=="twentymm"))%>% # Ensure same version of dataset is used as Bosmina analysis
@@ -47,7 +50,6 @@ AS<-Zoopsynther("Taxa", Taxa="Acartiella")%>%
          Julian_day = yday(Date))%>%
   drop_na(Date, SalSurf, Temperature, Latitude, Longitude, CPUE)%>%
   pivot_wider(names_from=c(Lifestage), values_from=CPUE)%>%
-  filter(!is.na(Adult) & !is.na(Juvenile))%>%
   mutate(Station=if_else(Station%in%unique(zooper::stationsEMPEZ$Station), paste(Source, Station, year(Date), month(Date), day(Date)), paste(Source, Station)))%>%
   left_join(Stations_final%>%
               select(Clust, Station),
@@ -106,16 +108,16 @@ ggplot(AS, aes(x=SalSurf_l, y=Juvenile))+
   facet_wrap(~Month)
 
 
-# Models ------------------------------------------------------------------
+# Model Adults ------------------------------------------------------------------
 
 iterations <- 5e3
 warmup <- iterations/4
 
-# Try a bivariate model with both life stages. 
+### Try a bivariate model with both life stages. 
 
 mb2<-brm(bf(mvbind(Adult, Juvenile) ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 5)) + (1|p|Clust), hu ~ s(SalSurf_l_s, bs="cr", k=5))+
            set_rescor(FALSE),
-         data=AS, family=hurdle_lognormal(),
+         data=filter(AS, !is.na(Adult) & !is.na(Juvenile)), family=hurdle_lognormal(),
          prior=prior(normal(0,10), class="Intercept", resp = "Adult")+
            prior(normal(0,10), class="Intercept", resp = "Juvenile")+
            prior(normal(0,5), class="b", resp = "Adult")+
@@ -125,14 +127,127 @@ mb2<-brm(bf(mvbind(Adult, Juvenile) ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(
          chains=1, cores=1,
          iter = iterations, warmup = warmup,
          backend = "cmdstanr", threads = threading(5))
-# Model fit looks bad, a few divergent transitions
+### Model fit looks bad, a few divergent transitions
 
 mb3<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, Lifestage, d=c(1,1,1,1), bs=c("cc", "cr", "cr", "fs"), k=c(13, 5, 5)) + (1|Clust), hu ~ t2(SalSurf_l_s, Lifestage, bs=c("cr", "fs"), k=5)),
-         data=AS_long, family=hurdle_lognormal(),
+         data=filter(AS_long, !is.na(CPUE)), family=hurdle_lognormal(),
          prior=prior(normal(0,10), class="Intercept")+
            prior(cauchy(0,5), class="sigma"),
          chains=1, cores=1,
          iter = iterations, warmup = warmup,
          backend = "cmdstanr", threads = threading(5))
-# 10 of 3750 (0.0%) transitions ended with a divergence.
-# 2172 of 3750 (58.0%) transitions hit the maximum treedepth limit of 10 or 2^10-1 leapfrog steps
+### 10 of 3750 (0.0%) transitions ended with a divergence.
+### 2172 of 3750 (58.0%) transitions hit the maximum treedepth limit of 10 or 2^10-1 leapfrog steps
+### Model fit looks a little better than mb2
+
+### Juvenile data aren't fitting well.
+### Probaly because people didn't start counting them until 2006
+
+mb4<-brm(bf(Adult ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 5)) + (1|Clust), hu ~ s(SalSurf_l_s, bs=c("cr"), k=5)),
+         data=filter(AS, !is.na(Adult)), family=hurdle_lognormal(),
+         prior=prior(normal(0,10), class="Intercept")+
+           prior(normal(0,5), class="b")+
+           prior(cauchy(0,5), class="sigma"),
+         chains=1, cores=1, control=list(adapt_delta=0.95),
+         iter = iterations, warmup = warmup,
+         backend = "cmdstanr", threads = threading(5))
+### No divergences or tree depth issues
+
+### Weird pp results, might help to add another variable to hurdle, maybe year?
+
+mb5<-brm(bf(Adult ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 5)) + (1|Clust), 
+            hu ~ t2(SalSurf_l_s, Julian_day_s, bs=c("cr", "cc"), k=c(5, 4))),
+         data=filter(AS, !is.na(Adult)), family=hurdle_lognormal(),
+         prior=prior(normal(0,10), class="Intercept")+
+           prior(normal(0,5), class="b")+
+           prior(cauchy(0,5), class="sigma"),
+         chains=1, cores=1, control=list(adapt_delta=0.995, max_treedepth=15),
+         iter = iterations, warmup = warmup,
+         backend = "cmdstanr", threads = threading(5))
+
+## predict -----------------------------------------------------------------
+
+AS_preds<-zoop_predict(mb4, filter(AS, !is.na(Adult)))
+
+AS_salinity<-zoop_plot(AS_preds, "salinity")
+AS_year<-zoop_plot(AS_preds, "year")
+AS_season<-zoop_plot(AS_preds, "season")
+
+ggsave(AS_season, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_season.png", device="png", units = "in", width=8, height=6)
+
+ggsave(AS_year, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_year.png", device="png", units = "in", width=8, height=6)
+
+ggsave(AS_salinity, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_salinity.png", device="png", units = "in", width=8, height=6)
+
+
+## Plot station intercepts -------------------------------------------------
+
+p_intercepts<-zoop_stations(mb4, select(Stations_clust, Clust, Latitude, Longitude))
+
+ggsave(p_intercepts, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_intercepts.png", device="png", units = "in", width=9, height=7)
+
+
+# Model juveniles----------------------------------------------------------
+
+mb4_juv<-brm(bf(Juvenile ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 3)) + (1|Clust), hu ~ s(SalSurf_l_s, bs=c("cr"), k=5)),
+         data=filter(AS, !is.na(Juvenile)), family=hurdle_lognormal(),
+         prior=prior(normal(0,10), class="Intercept")+
+           prior(normal(0,5), class="b")+
+           prior(cauchy(0,5), class="sigma"),
+         chains=1, cores=1, control=list(adapt_delta=0.99),
+         iter = iterations, warmup = warmup,
+         backend = "cmdstanr", threads = threading(5))
+
+mb5_juv<-brm(bf(Juvenile ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 3)) + (1|Clust), 
+                hu ~ t2(SalSurf_l_s, Year_s, d=c(1,1), bs=c("cr", "cr"), k=c(5, 3))),
+             data=filter(AS, !is.na(Juvenile)), family=hurdle_lognormal(),
+             prior=prior(normal(0,10), class="Intercept")+
+               prior(normal(0,5), class="b")+
+               prior(cauchy(0,5), class="sigma"),
+             chains=1, cores=1, control=list(adapt_delta=0.99, max_treedepth=15),
+             iter = iterations, warmup = warmup,
+             backend = "cmdstanr", threads = threading(5))
+# No divergence or treedepth issues
+# 6.7 hours
+# But doesn't fix weird pp_check pattern
+
+
+
+pp_check(mb5_juv, type="error_scatter_avg_vs_x", x="Julian_day_s")
+pp_check(mb5_juv, type="error_scatter_avg_vs_x", x="Year_s") # no year pattern
+pp_check(mb4_juv, type="error_scatter_avg_vs_x", x="Year_s") # not even in the model without year in the hu formula
+# Looks like lots of error in the middle of the year, so trying with Julian day in the hu formula instead of year
+
+mb6_juv<-brm(bf(Juvenile ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 3)) + (1|Clust), 
+                hu ~ t2(SalSurf_l_s, Julian_day_s, d=c(1,1), bs=c("cr", "cc"), k=c(5, 4))),
+             data=filter(AS, !is.na(Juvenile)), family=hurdle_lognormal(),
+             prior=prior(normal(0,10), class="Intercept")+
+               prior(normal(0,5), class="b")+
+               prior(cauchy(0,5), class="sigma"),
+             chains=1, cores=1, control=list(adapt_delta=0.99, max_treedepth=15),
+             iter = iterations, warmup = warmup,
+             backend = "cmdstanr", threads = threading(5))
+# No divergence or treedepth issues
+pp_check(mb6_juv)+scale_x_log10()
+# pp_check plot looks way better
+
+## predict -----------------------------------------------------------------
+
+AS_juv_preds<-zoop_predict(mb4_juv, filter(AS, !is.na(Juvenile)))
+
+AS_juv_salinity<-zoop_plot(AS_juv_preds, "salinity")
+AS_juv_year<-zoop_plot(AS_juv_preds, "year")
+AS_juv_season<-zoop_plot(AS_juv_preds, "season")
+
+ggsave(AS_juv_season, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_juv_season.png", device="png", units = "in", width=8, height=6)
+
+ggsave(AS_juv_year, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_juv_year.png", device="png", units = "in", width=8, height=6)
+
+ggsave(AS_juv_salinity, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_juv_salinity.png", device="png", units = "in", width=8, height=6)
+
+
+## Plot station intercepts -------------------------------------------------
+
+p_juv_intercepts<-zoop_stations(mb4_juv, select(Stations_clust, Clust, Latitude, Longitude))
+
+ggsave(p_juv_intercepts, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_juv_intercepts.png", device="png", units = "in", width=9, height=7)

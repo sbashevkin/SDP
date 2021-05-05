@@ -48,14 +48,27 @@ zoop_plot<-function(data, type){
     stop('Valid types are "season", "year", or "salinity."')
   }
   
+  if(min(data$Year)>1975){
+    if(min(data$Year)>2000){
+      plot_years1<-seq(2006, 2019, by=3)
+      plot_years2<-seq(2006, 2019, by=3)
+    }else{
+      plot_years1<-seq(1975, 2020, by=5)
+      plot_years2<-seq(1995, 2015, by=5)
+    }
+  }else{
+    plot_years1<-seq(1975, 2020, by=5)
+    plot_years2<-seq(1975, 2020, by=10)
+  }
+  
   
   if(type=="season"){
-    data<-filter(data, Salinity%in%unique(data$Salinity)[seq(1,19, by=6)] & Year%in%seq(1975, 2020, by=5))
+    data<-filter(data, Salinity%in%unique(data$Salinity)[seq(1,19, by=6)] & Year%in%plot_years1)
   } else{
     if(type=="year"){
       data<-filter(data, Salinity%in%unique(data$Salinity)[seq(1,19, by=6)] & Day==16)
     }else{
-      data<-filter(data, Year%in%seq(1975, 2020, by=10) & Day==16)
+      data<-filter(data, Year%in%plot_years2 & Day==16)
     }
   }
   
