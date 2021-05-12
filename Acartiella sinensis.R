@@ -161,13 +161,25 @@ mb5<-brm(bf(Adult ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc",
          prior=prior(normal(0,10), class="Intercept")+
            prior(normal(0,5), class="b")+
            prior(cauchy(0,5), class="sigma"),
-         chains=1, cores=1, control=list(adapt_delta=0.995, max_treedepth=15),
+         chains=1, cores=1, control=list(adapt_delta=0.99),
          iter = iterations, warmup = warmup,
          backend = "cmdstanr", threads = threading(5))
 
+mb5_full<-brm(bf(Adult ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 5)) + (1|Clust), 
+            hu ~ t2(SalSurf_l_s, Julian_day_s, bs=c("cr", "cc"), k=c(5, 4))),
+         data=filter(AS, !is.na(Adult)), family=hurdle_lognormal(),
+         prior=prior(normal(0,10), class="Intercept")+
+           prior(normal(0,5), class="b")+
+           prior(cauchy(0,5), class="sigma"),
+         chains=3, cores=3, control=list(adapt_delta=0.995, max_treedepth=15),
+         iter = iterations, warmup = warmup,
+         backend = "cmdstanr", threads = threading(2))
+# Finished with no treedepth or divergence issues 
+pp(mb5_full)
+
 ## predict -----------------------------------------------------------------
 
-AS_preds<-zoop_predict(mb4, filter(AS, !is.na(Adult)))
+AS_preds<-zoop_predict(mb5_full, filter(AS, !is.na(Adult)))
 
 AS_salinity<-zoop_plot(AS_preds, "salinity")
 AS_year<-zoop_plot(AS_preds, "year")
@@ -182,7 +194,7 @@ ggsave(AS_salinity, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankto
 
 ## Plot station intercepts -------------------------------------------------
 
-p_intercepts<-zoop_stations(mb4, select(Stations_clust, Clust, Latitude, Longitude))
+p_intercepts<-zoop_stations(mb5_full, select(Stations_clust, Clust, Latitude, Longitude))
 
 ggsave(p_intercepts, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_intercepts.png", device="png", units = "in", width=9, height=7)
 
@@ -231,9 +243,20 @@ mb6_juv<-brm(bf(Juvenile ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=
 pp_check(mb6_juv)+scale_x_log10()
 # pp_check plot looks way better
 
+mb6_juv_full<-brm(bf(Juvenile ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 3)) + (1|Clust), 
+                hu ~ t2(SalSurf_l_s, Julian_day_s, d=c(1,1), bs=c("cr", "cc"), k=c(5, 4))),
+             data=filter(AS, !is.na(Juvenile)), family=hurdle_lognormal(),
+             prior=prior(normal(0,10), class="Intercept")+
+               prior(normal(0,5), class="b")+
+               prior(cauchy(0,5), class="sigma"),
+             chains=3, cores=3, control=list(adapt_delta=0.99, max_treedepth=15),
+             iter = iterations, warmup = warmup,
+             backend = "cmdstanr", threads = threading(2))
+# 1 divergent transition
+pp(mb6_juv_full)
 ## predict -----------------------------------------------------------------
 
-AS_juv_preds<-zoop_predict(mb4_juv, filter(AS, !is.na(Juvenile)))
+AS_juv_preds<-zoop_predict(mb6_juv_full, filter(AS, !is.na(Juvenile)))
 
 AS_juv_salinity<-zoop_plot(AS_juv_preds, "salinity")
 AS_juv_year<-zoop_plot(AS_juv_preds, "year")
@@ -248,6 +271,6 @@ ggsave(AS_juv_salinity, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zoopla
 
 ## Plot station intercepts -------------------------------------------------
 
-p_juv_intercepts<-zoop_stations(mb4_juv, select(Stations_clust, Clust, Latitude, Longitude))
+p_juv_intercepts<-zoop_stations(mb6_juv_full, select(Stations_clust, Clust, Latitude, Longitude))
 
 ggsave(p_juv_intercepts, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_juv_intercepts.png", device="png", units = "in", width=9, height=7)
