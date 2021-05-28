@@ -177,9 +177,17 @@ mb5_full<-brm(bf(Adult ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c(
 # Finished with no treedepth or divergence issues 
 pp(mb5_full)
 
+
+# variogram ---------------------------------------------------------------
+
+
+mb5_full_vario<-zoop_vario(model=mb5_full, data=filter(AS, !is.na(Adult)), yvar="Adult", cores=5)
+mb5_full_vario_plot<-zoop_vario_plot(mb5_full_vario)
+ggsave(mb5_full_vario_plot, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_variogram.png", device="png", width=8, height=5, units="in")
+
 ## predict -----------------------------------------------------------------
 
-AS_preds<-zoop_predict(mb5_full, filter(AS, !is.na(Adult)))
+AS_preds<-zoop_predict(mb5_full, filter(AS, !is.na(Adult)), confidence = 99)
 
 AS_salinity<-zoop_plot(AS_preds, "salinity")
 AS_year<-zoop_plot(AS_preds, "year")
@@ -254,9 +262,31 @@ mb6_juv_full<-brm(bf(Juvenile ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1)
              backend = "cmdstanr", threads = threading(2))
 # 1 divergent transition
 pp(mb6_juv_full)
+
+mb7_juv<-brm(bf(Juvenile ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 3)) + gp(Date_num_s, k=5, c = 5/4) + (1|Clust), 
+                hu ~ t2(SalSurf_l_s, Julian_day_s, d=c(1,1), bs=c("cr", "cc"), k=c(5, 4))),
+             data=filter(AS, !is.na(Juvenile)), family=hurdle_lognormal(),
+             prior=prior(normal(0,10), class="Intercept")+
+               prior(normal(0,5), class="b")+
+               prior(cauchy(0,5), class="sigma"),
+             chains=1, cores=1, control=list(adapt_delta=0.99, max_treedepth=15),
+             iter = iterations, warmup = warmup,
+             backend = "cmdstanr", threads = threading(5))
+mb7_juv_vario<-zoop_vario(model=mb7_juv, data=filter(AS, !is.na(Juvenile)), yvar="Juvenile", cores=5)
+# No better, seems to just fit a simple smooth over time and the full gp is too computationally expensive to fit
+
+
+# variogram ---------------------------------------------------------------
+
+
+mb6_juv_full_vario<-zoop_vario(model=mb6_juv_full, data=filter(AS, !is.na(Juvenile)), yvar="Juvenile", cores=5)
+mb6_juv_full_vario_plot<-zoop_vario_plot(mb6_juv_full_vario)
+ggsave(mb6_juv_full_vario_plot, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_juv_variogram.png", device="png", width=8, height=5, units="in")
+
+
 ## predict -----------------------------------------------------------------
 
-AS_juv_preds<-zoop_predict(mb6_juv_full, filter(AS, !is.na(Juvenile)))
+AS_juv_preds<-zoop_predict(mb6_juv_full, filter(AS, !is.na(Juvenile)), confidence=99)
 
 AS_juv_salinity<-zoop_plot(AS_juv_preds, "salinity")
 AS_juv_year<-zoop_plot(AS_juv_preds, "year")

@@ -286,50 +286,14 @@ mb2M_full<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c(
 
 # Spatio-temporal variogram -----------------------------------------------
 
-resid_mb2M<-residuals(mb2M_full, type="pearson")
-
-Data_vario<-BL%>%
-  mutate(Resid=resid_mb2M[,"Estimate"])
-
-Data_coords<-Data_vario%>%
-  st_as_sf(coords=c("Longitude", "Latitude"), crs=4326)%>%
-  st_transform(crs=26910)%>%
-  st_coordinates()%>%
-  as_tibble()%>%
-  mutate(across(c(X,Y), ~(.x-mean(.x))/1000))
-
-Data_vario<-bind_cols(Data_vario%>%
-                        select(Date, Resid), Data_coords)
-sp<-SpatialPoints(coords=data.frame(X=Data_vario$X, Y=Data_vario$Y))
-sp2<-STIDF(sp, time=Data_vario$Date, 
-           data=data.frame(Residuals=Data_vario$Resid))
-mb2M_vario<-variogramST(Residuals~1, data=sp2, tunit="weeks", cores=5, tlags=seq(0,30, by=2))
-
-p_time<-ggplot(mb2M_vario, aes(x=timelag, y=gamma, color=spacelag, group=spacelag))+
-  geom_line()+
-  geom_point()+
-  scale_color_viridis_c(name="Distance (km)")+
-  scale_x_continuous()+
-  xlab("Time difference (weeks)")+
-  theme_bw()+
-  theme(legend.justification = "left")
-
-p_space<-ggplot(mb2M_vario, aes(x=spacelag, y=gamma, color=timelag, group=timelag))+
-  geom_line()+
-  geom_point()+
-  scale_color_viridis_c(name="Time difference\n(weeks)")+
-  xlab("Distance (km)")+
-  theme_bw()+
-  theme(legend.justification = "left")
-
-p_variogram<-p_time/p_space+plot_annotation(tag_levels="A")
-
-ggsave(p_variogram, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Bosmina_variogram.png", device="png", width=8, height=5, units="in")
+mb2M_full_vario<-zoop_vario(model=mb2M_full, data=BL, yvar="CPUE", cores=5)
+mb2M_full_vario_plot<-zoop_vario_plot(mb2M_full_vario)
+ggsave(mb2M_full_vario_plot, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Bosmina_variogram.png", device="png", width=8, height=5, units="in")
 
 
 # Prediction plots --------------------------------------------------------
 
-BL_preds<-zoop_predict(mb2M_full, BL)
+BL_preds<-zoop_predict(mb2M_full, BL, confidence=99)
 
 BL_salinity<-zoop_plot(BL_preds, "salinity")
 BL_year<-zoop_plot(BL_preds, "year")

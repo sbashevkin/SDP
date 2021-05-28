@@ -28,11 +28,9 @@ Stations_clust <- Pointcluster(Points=Stations, Distance=1000, Latitude_column=L
 
 Stations_final <- unnest(Stations_clust, Station)
 
-Delta_transitioned <- spacetools::Maptransitioner(spacetools::Delta)
-
 #Get in-water distance between stations
 distance <- Waterdist(Water_map=spacetools::Delta, Points=Stations_clust, Latitude_column=Latitude, 
-                      Longitude_column=Longitude, PointID_column=Clust, Water_map_transitioned = Delta_transitioned)
+                      Longitude_column=Longitude, PointID_column=Clust)
 
 AV<-zoopComb%>%
   filter(Taxname=="Acanthocyclops vernalis")%>%
@@ -156,12 +154,25 @@ mb2_full<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("
 # 1 divergent transition, which shouldn't be a problem https://stats.stackexchange.com/questions/432479/divergent-transitions-in-stan
 
 
-# Model checks ------------------------------------------------------------
+mb3<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 5)) + (1|gr(Clust, cov=distance_cov)), hu ~ s(SalSurf_l_s, bs="cr", k=5)),
+         data=AV, data2=list(distance_cov=distance_cov),
+         family=hurdle_lognormal(),
+         prior=prior(normal(0,10), class="Intercept")+
+           prior(normal(0,5), class="b")+
+           prior(cauchy(0,5), class="sigma"),
+         chains=1, cores=1, control=list(adapt_delta=0.95, max_treedepth=15),
+         iter = iterations, warmup = warmup,
+         backend = "cmdstanr", threads = threading(5))
 
-mb2_full_check<-pp(mb2_full)
-mb2_full_vario<-zoop_vario(mb2_full, AV, cores=5)
+ # Model checks ------------------------------------------------------------
+
+pp(mb2_full)
+mb2_full_vario2<-zoop_vario(model=mb2_full, data=AV, yvar="CPUE", cores=5)
 mb2_full_vario_plot<-zoop_vario_plot(mb2_full_vario)
 ggsave(mb2_full_vario_plot, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_variogram.png", device="png", width=8, height=5, units="in")
+
+mb3_vario<-zoop_vario(model=mb3, data=AV, yvar="CPUE", cores=5)
+mb3_vario_plot<-zoop_vario_plot(mb3_vario)
 # predict -----------------------------------------------------------------
 
 AV_preds<-zoop_predict(mb2_full, AV)

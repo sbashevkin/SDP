@@ -12,7 +12,12 @@ pp <- function(model, resp=NULL){
   return(p)
 }
 
-zoop_predict<-function(model, data){
+zoop_predict<-function(model, data, confidence=95){
+  prob_lower<-(100-confidence)/200
+  probs<-c(prob_lower, 1-prob_lower)
+  
+  quantiles<-paste0("Q", probs*100)
+  
   jdays<-expand_grid(Year=2001, Month=1:12, Day=seq(1, 26, by=5))%>%
     mutate(Julian_day=yday(ymd(paste(Year, Month, Day, sep="-"))))%>%
     filter(Julian_day>=min(data$Julian_day) & Julian_day<=max(data$Julian_day))
@@ -27,12 +32,12 @@ zoop_predict<-function(model, data){
                 dplyr::select(Julian_day, Month, Day),
               by="Julian_day")
   
-  pred<-fitted(model, newdata=newdata, re_formula=NA, scale="response")
+  pred<-fitted(model, newdata=newdata, re_formula=NA, scale="response", probs=probs)
   
   newdata_pred<-newdata%>%
     mutate(Pred=pred[,"Estimate"],
-           l95=pred[,"Q2.5"],
-           u95=pred[,"Q97.5"])%>%
+           lowerCI=pred[,quantiles[1]],
+           upperCI=pred[,quantiles[2]])%>%
     mutate(Month2=month(Month, label=T))
   
   return(newdata_pred)
@@ -113,7 +118,7 @@ zoop_plot<-function(data, type){
     
   }
   
-  p<-ggplot(data, aes(x=.data[[xvar]], y=Pred, ymin=l95, ymax=u95, fill=.data[[fillvar]], group=.data[[fillvar]]))+
+  p<-ggplot(data, aes(x=.data[[xvar]], y=Pred, ymin=lowerCI, ymax=upperCI, fill=.data[[fillvar]], group=.data[[fillvar]]))+
     geom_ribbon(alpha=0.4)+
     geom_line(aes(color=.data[[fillvar]]))+
     facet_wrap(~.data[[facetvar]], scales = "free_y")+
@@ -127,8 +132,14 @@ zoop_plot<-function(data, type){
   return(p)
 }
 
-zoop_vario<-function(model, data, cores=4){
-  resids<-residuals(model, type="pearson")
+zoop_vario<-function(model, data, yvar, cores=4){
+  require(sp)
+  require(gstat)
+  require(spacetime)
+  require(brms)
+  require(dplyr)
+  require(sf)
+  resids<-residuals(model, method="posterior_predict")/sd(data[[yvar]])
   
   Data_vario<-data%>%
     mutate(Resid=resids[,"Estimate"])
