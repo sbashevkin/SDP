@@ -132,14 +132,22 @@ zoop_plot<-function(data, type){
   return(p)
 }
 
-zoop_vario<-function(model, data, yvar, cores=4){
+zoop_vario<-function(model, data, yvar, resid_type="standardized", cores=4){
   require(sp)
   require(gstat)
   require(spacetime)
   require(brms)
   require(dplyr)
   require(sf)
-  resids<-residuals(model, method="posterior_predict")/sd(data[[yvar]])
+  
+  if(resid_type=="standardized"){
+    resids<-residuals(model, method="posterior_predict")/sd(data[[yvar]])
+  }else{
+    if(resid_type=="deviance"){
+      resids<-residuals(model, method="posterior_predict")^2 # This seems to be the method used to calculate deviance residuals by mgcv
+    }else
+      stop("Only 'standardized' or 'deviance' resid_type values are accepted")
+  }
   
   Data_vario<-data%>%
     mutate(Resid=resids[,"Estimate"])

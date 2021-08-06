@@ -167,7 +167,7 @@ mb3<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", 
  # Model checks ------------------------------------------------------------
 
 pp(mb2_full)
-mb2_full_vario2<-zoop_vario(model=mb2_full, data=AV, yvar="CPUE", cores=5)
+mb2_full_vario<-zoop_vario(model=mb2_full, data=AV, yvar="CPUE", cores=5)
 mb2_full_vario_plot<-zoop_vario_plot(mb2_full_vario)
 ggsave(mb2_full_vario_plot, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_variogram.png", device="png", width=8, height=5, units="in")
 
@@ -175,7 +175,7 @@ mb3_vario<-zoop_vario(model=mb3, data=AV, yvar="CPUE", cores=5)
 mb3_vario_plot<-zoop_vario_plot(mb3_vario)
 # predict -----------------------------------------------------------------
 
-AV_preds<-zoop_predict(mb2_full, AV)
+AV_preds<-zoop_predict(mb2_full, AV, confidence=99)
 
 AV_salinity<-zoop_plot(AV_preds, "salinity")
 AV_year<-zoop_plot(AV_preds, "year")

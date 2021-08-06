@@ -15,6 +15,8 @@ require(colorspace)
 require(stringr)
 source("Utility functions.R")
 
+# Try adding volume to the hu formula?
+
 # Cluster nearby stations
 Stations<-zooper::stations%>%
   mutate(Station=paste(Source, Station))%>%
@@ -64,7 +66,7 @@ BL<-zoopComb%>%
          Month=month(Date, label = T),
          ID=1:nrow(.),
          Clust2=Clust)%>%
-  mutate_at(vars(Date_num, SalSurf, SalSurf_l, Temperature, Latitude, Longitude, Julian_day, Year), list(s=~(.-mean(., na.rm=T))/sd(., na.rm=T)))
+  mutate_at(vars(Date_num, SalSurf, SalSurf_l, Temperature, Latitude, Longitude, Julian_day, Year, Volume), list(s=~(.-mean(., na.rm=T))/sd(., na.rm=T)))
 
 Sal_cat<-quantile(BL$SalSurf, probs=seq(0, 1, by=0.1))
 
@@ -283,6 +285,16 @@ mb2M_full<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c(
           chains=3, cores=3, control=list(adapt_delta=0.99, max_treedepth = 15),
           iter = iterations, warmup = warmup,
           backend = "cmdstanr", threads = threading(2))
+
+mb2N<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", "cr", "cr"), k=c(13, 5, 5)) + (1|Clust), hu ~ s(SalSurf_l_s, bs="cr", k=5) + Volume_s),
+          data=BL, family=hurdle_lognormal(),
+          prior=prior(normal(0,10), class="Intercept")+
+            prior(normal(0,5), class="b")+
+            prior(cauchy(0,5), class="sigma"),
+          chains=1, cores=1, control=list(adapt_delta=0.99),
+          iter = iterations, warmup = warmup,
+          backend = "cmdstanr", threads = threading(4))
+mb2N<-add_criterion(mb2N, c("loo", "waic"))
 
 # Spatio-temporal variogram -----------------------------------------------
 
