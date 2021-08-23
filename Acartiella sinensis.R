@@ -41,7 +41,7 @@ Stations_final <- unnest(Stations_clust, Station)
 # Juveniles have only been counted since 2006
 
 AS<-Zoopsynther("Taxa", Taxa="Acartiella")%>%
-  filter((Taxlifestage=="Acartiella_all_Meso Adult" & Year>=1994)| (Taxlifestage=="Acartiella_all_Meso Juvenile" & Year>=2006))%>%
+  filter((Taxlifestage=="Acartiella_all_Meso Adult" & Year>=1994) | (Taxlifestage=="Acartiella_all_Meso Juvenile" & Year>=2006))%>%
   mutate(Taxname=recode(Taxname, `Acartiella_all_Meso`="Acartiella"))%>%
   select(-Taxlifestage, -SizeClass, -Genus, -Family, -Order, -Class, -Phylum, -Taxatype, -Species, -Orphan, -Undersampled)%>%
   filter(!(Year==2019 & Source=="twentymm"))%>% # Ensure same version of dataset is used as Bosmina analysis
@@ -183,28 +183,35 @@ pp(mb5_full)
 
 mb5_full_vario<-zoop_vario(model=mb5_full, data=filter(AS, !is.na(Adult)), yvar="Adult", cores=5)
 mb5_full_vario_plot<-zoop_vario_plot(mb5_full_vario)
-ggsave(mb5_full_vario_plot, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_variogram.png", device="png", width=8, height=5, units="in")
+ggsave(mb5_full_vario_plot, filename="figures/Acartiella_adult_variogram.png", device="png", width=8, height=5, units="in")
 
 ## predict -----------------------------------------------------------------
 
-AS_preds<-zoop_predict(mb5_full, filter(AS, !is.na(Adult)), confidence = 99)
+Data_effort_adult<-filter(AS, !is.na(Adult))%>%
+  group_by(Month, Year)%>%
+  summarise(N=n(), .groups="drop")%>%
+  mutate(Month=as.integer(Month))
+
+AS_preds<-zoop_predict(mb5_full, filter(AS, !is.na(Adult)), confidence = 99)%>%
+  left_join(Data_effort_adult, by=c("Month", "Year"))%>%
+  mutate(across(c(Pred, lowerCI, upperCI), ~if_else(is.na(N), NA_real_, .x)))
 
 AS_salinity<-zoop_plot(AS_preds, "salinity")
 AS_year<-zoop_plot(AS_preds, "year")
 AS_season<-zoop_plot(AS_preds, "season")
 
-ggsave(AS_season, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_season.png", device="png", units = "in", width=8, height=6)
+ggsave(AS_season, file="figures/Acartiella_adult_season.png", device="png", units = "in", width=8, height=6)
 
-ggsave(AS_year, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_year.png", device="png", units = "in", width=8, height=6)
+ggsave(AS_year, file="figures/Acartiella_adult_year.png", device="png", units = "in", width=8, height=6)
 
-ggsave(AS_salinity, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_salinity.png", device="png", units = "in", width=8, height=6)
+ggsave(AS_salinity, file="figures/Acartiella_adult_salinity.png", device="png", units = "in", width=8, height=6)
 
 
 ## Plot station intercepts -------------------------------------------------
 
 p_intercepts<-zoop_stations(mb5_full, select(Stations_clust, Clust, Latitude, Longitude))
 
-ggsave(p_intercepts, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_intercepts.png", device="png", units = "in", width=9, height=7)
+ggsave(p_intercepts, file="figures/Acartiella_adult_intercepts.png", device="png", units = "in", width=6, height=4)
 
 
 # Model juveniles----------------------------------------------------------
@@ -281,26 +288,33 @@ mb7_juv_vario<-zoop_vario(model=mb7_juv, data=filter(AS, !is.na(Juvenile)), yvar
 
 mb6_juv_full_vario<-zoop_vario(model=mb6_juv_full, data=filter(AS, !is.na(Juvenile)), yvar="Juvenile", cores=5)
 mb6_juv_full_vario_plot<-zoop_vario_plot(mb6_juv_full_vario)
-ggsave(mb6_juv_full_vario_plot, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_juv_variogram.png", device="png", width=8, height=5, units="in")
+ggsave(mb6_juv_full_vario_plot, filename="figures/Acartiella_juv_variogram.png", device="png", width=8, height=5, units="in")
 
 
 ## predict -----------------------------------------------------------------
 
-AS_juv_preds<-zoop_predict(mb6_juv_full, filter(AS, !is.na(Juvenile)), confidence=99)
+Data_effort_juv<-filter(AS, !is.na(Juvenile))%>%
+  group_by(Month, Year)%>%
+  summarise(N=n(), .groups="drop")%>%
+  mutate(Month=as.integer(Month))
+
+AS_juv_preds<-zoop_predict(mb6_juv_full, filter(AS, !is.na(Juvenile)), confidence=99)%>%
+  left_join(Data_effort_juv, by=c("Month", "Year"))%>%
+  mutate(across(c(Pred, lowerCI, upperCI), ~if_else(is.na(N), NA_real_, .x)))
 
 AS_juv_salinity<-zoop_plot(AS_juv_preds, "salinity")
 AS_juv_year<-zoop_plot(AS_juv_preds, "year")
 AS_juv_season<-zoop_plot(AS_juv_preds, "season")
 
-ggsave(AS_juv_season, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_juv_season.png", device="png", units = "in", width=8, height=6)
+ggsave(AS_juv_season, file="figures/Acartiella_juv_season.png", device="png", units = "in", width=8, height=6)
 
-ggsave(AS_juv_year, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_juv_year.png", device="png", units = "in", width=8, height=6)
+ggsave(AS_juv_year, file="figures/Acartiella_juv_year.png", device="png", units = "in", width=8, height=6)
 
-ggsave(AS_juv_salinity, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_juv_salinity.png", device="png", units = "in", width=8, height=6)
+ggsave(AS_juv_salinity, file="figures/Acartiella_juv_salinity.png", device="png", units = "in", width=8, height=6)
 
 
 ## Plot station intercepts -------------------------------------------------
 
 p_juv_intercepts<-zoop_stations(mb6_juv_full, select(Stations_clust, Clust, Latitude, Longitude))
 
-ggsave(p_juv_intercepts, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acartiella_juv_intercepts.png", device="png", units = "in", width=9, height=7)
+ggsave(p_juv_intercepts, file="figures/Acartiella_juv_intercepts.png", device="png", units = "in", width=6, height=4)

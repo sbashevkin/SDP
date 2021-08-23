@@ -76,6 +76,7 @@ zoop_plot<-function(data, type){
       data<-filter(data, Year%in%plot_years2 & Day==16)
     }
   }
+
   
   xvar<-case_when(type=="season" ~ "Julian_day", 
                   type=="year" ~ "Year", 
@@ -90,6 +91,13 @@ zoop_plot<-function(data, type){
                       type=="salinity" ~ "Month2")
   
   xlabel<-str_replace(xvar, "_", " ")
+  
+  data_orphans<-data%>%
+    group_by(.data[[fillvar]], .data[[facetvar]])%>%
+    mutate(Pred_lag=lag(Pred, order_by = .data[[xvar]]), Pred_lead=lead(Pred, order_by = .data[[xvar]]))%>%
+    ungroup()%>%
+    filter(is.na(Pred_lag) & is.na(Pred_lead) & !is.na(Pred))%>%
+    select(-Pred_lag, -Pred_lead)
   
   if(type=="season"){
     scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
@@ -121,8 +129,9 @@ zoop_plot<-function(data, type){
   p<-ggplot(data, aes(x=.data[[xvar]], y=Pred, ymin=lowerCI, ymax=upperCI, fill=.data[[fillvar]], group=.data[[fillvar]]))+
     geom_ribbon(alpha=0.4)+
     geom_line(aes(color=.data[[fillvar]]))+
+    geom_pointrange(data=data_orphans, aes(color=.data[[fillvar]]), shape=21, position=position_dodge(width=2), size=0.2)+
     facet_wrap(~.data[[facetvar]], scales = "free_y")+
-    scale_y_continuous(expand=c(0,0))+
+    scale_y_continuous(expand=c(0,0), limits = c(0, NA))+
     ylab("CPUE")+
     xlab(xlabel)+
     theme_bw()+
@@ -198,13 +207,23 @@ zoop_stations<-function(model, stations){
     as_tibble(rownames="Clust")%>%
     mutate(Clust=as.numeric(str_extract(Clust, "(\\d)+")))%>%
     left_join(stations,
-              by="Clust")
+              by="Clust")%>%
+    st_as_sf(coords=c("Longitude", "Latitude"), crs=4326)%>%
+    st_transform(crs=st_crs(deltamapr::WW_Delta))
+  
+  map<-deltamapr::WW_Delta%>%
+    st_crop(station_intercepts%>%
+              st_union()%>%
+              st_buffer(dist = units::set_units(1, "km")))
   
   p_intercepts<-ggplot()+
-    geom_sf(data=deltamapr::WW_Delta%>%st_transform(crs=4326), fill="gray90", color="gray90")+
-    geom_point(data=station_intercepts, aes(x=Longitude, y=Latitude, fill=Estimate), color="black", shape=21, alpha=0.7)+
-    scale_fill_continuous_diverging(guide=guide_colorbar(barheight=10), palette="Blue-Red 3", name="Varying\nintercept\nestimate")+
-    theme_bw()
+    geom_sf(data=map, fill="gray90", color="gray90")+
+    geom_sf(data=station_intercepts, aes(fill=Estimate), color="black", shape=21, alpha=0.7)+
+    scale_fill_continuous_diverging(guide=guide_colorbar(barwidth=10, title.hjust=0.5, direction="horizontal", title.position = "top"), 
+                                    palette="Blue-Red 3", name="Clustered station estimate")+
+    coord_sf(expand=FALSE)+
+    theme_bw()+
+    theme(legend.position=c(0.3, 0.85), legend.background=element_rect(color="black"), legend.margin = margin(10, 10, 10, 10))
   
   return(p_intercepts)
 }

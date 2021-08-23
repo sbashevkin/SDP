@@ -300,25 +300,32 @@ mb2N<-add_criterion(mb2N, c("loo", "waic"))
 
 mb2M_full_vario<-zoop_vario(model=mb2M_full, data=BL, yvar="CPUE", cores=5)
 mb2M_full_vario_plot<-zoop_vario_plot(mb2M_full_vario)
-ggsave(mb2M_full_vario_plot, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Bosmina_variogram.png", device="png", width=8, height=5, units="in")
+ggsave(mb2M_full_vario_plot, filename="figures/Bosmina_variogram.png", device="png", width=8, height=5, units="in")
 
 
 # Prediction plots --------------------------------------------------------
 
-BL_preds<-zoop_predict(mb2M_full, BL, confidence=99)
+Data_effort<-BL%>%
+  group_by(Month, Year)%>%
+  summarise(N=n(), .groups="drop")%>%
+  mutate(Month=as.integer(Month))
+
+BL_preds<-zoop_predict(mb2M_full, BL, confidence=99)%>%
+  left_join(Data_effort, by=c("Month", "Year"))%>%
+  mutate(across(c(Pred, lowerCI, upperCI), ~if_else(is.na(N), NA_real_, .x)))
 
 BL_salinity<-zoop_plot(BL_preds, "salinity")
 BL_year<-zoop_plot(BL_preds, "year")
 BL_season<-zoop_plot(BL_preds, "season")
 
-ggsave(BL_season, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Bosmina_season.png", device="png", units = "in", width=8, height=6)
+ggsave(BL_season, file="figures/Bosmina_season.png", device="png", units = "in", width=8, height=6)
 
-ggsave(BL_year, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Bosmina_year.png", device="png", units = "in", width=8, height=6)
+ggsave(BL_year, file="figures/Bosmina_year.png", device="png", units = "in", width=8, height=6)
 
-ggsave(BL_salinity, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Bosmina_salinity.png", device="png", units = "in", width=8, height=6)
+ggsave(BL_salinity, file="figures/Bosmina_salinity.png", device="png", units = "in", width=8, height=6)
 
 # Plot station intercepts -------------------------------------------------
 
 p_intercepts<-zoop_stations(mb2M_full, select(Stations_clust, Clust, Latitude, Longitude))
 
-ggsave(p_intercepts, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Bosmina_intercepts.png", device="png", units = "in", width=9, height=7)
+ggsave(p_intercepts, file="figures/Bosmina_intercepts.png", device="png", units = "in", width=6, height=4)

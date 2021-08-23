@@ -169,27 +169,34 @@ mb3<-brm(bf(CPUE ~ t2(Julian_day_s, SalSurf_l_s, Year_s, d=c(1,1,1), bs=c("cc", 
 pp(mb2_full)
 mb2_full_vario<-zoop_vario(model=mb2_full, data=AV, yvar="CPUE", cores=5)
 mb2_full_vario_plot<-zoop_vario_plot(mb2_full_vario)
-ggsave(mb2_full_vario_plot, filename="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_variogram.png", device="png", width=8, height=5, units="in")
+ggsave(mb2_full_vario_plot, filename="figures/Acanthocyclops_variogram.png", device="png", width=8, height=5, units="in")
 
 mb3_vario<-zoop_vario(model=mb3, data=AV, yvar="CPUE", cores=5)
 mb3_vario_plot<-zoop_vario_plot(mb3_vario)
 # predict -----------------------------------------------------------------
 
-AV_preds<-zoop_predict(mb2_full, AV, confidence=99)
+Data_effort<-AV%>%
+  group_by(Month, Year)%>%
+  summarise(N=n(), .groups="drop")%>%
+  mutate(Month=as.integer(Month))
+
+AV_preds<-zoop_predict(mb2_full, AV, confidence=99)%>%
+  left_join(Data_effort, by=c("Month", "Year"))%>%
+  mutate(across(c(Pred, lowerCI, upperCI), ~if_else(is.na(N), NA_real_, .x)))
 
 AV_salinity<-zoop_plot(AV_preds, "salinity")
 AV_year<-zoop_plot(AV_preds, "year")
 AV_season<-zoop_plot(AV_preds, "season")
 
-ggsave(AV_season, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_season.png", device="png", units = "in", width=8, height=6)
+ggsave(AV_season, file="figures/Acanthocyclops_season.png", device="png", units = "in", width=8, height=6)
 
-ggsave(AV_year, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_year.png", device="png", units = "in", width=8, height=6)
+ggsave(AV_year, file="figures/Acanthocyclops_year.png", device="png", units = "in", width=8, height=6)
 
-ggsave(AV_salinity, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_salinity.png", device="png", units = "in", width=8, height=6)
+ggsave(AV_salinity, file="figures/Acanthocyclops_salinity.png", device="png", units = "in", width=8, height=6)
 
 
 # Plot station intercepts -------------------------------------------------
 
 p_intercepts<-zoop_stations(mb2_full, select(Stations_clust, Clust, Latitude, Longitude))
 
-ggsave(p_intercepts, file="C:/Users/sbashevkin/OneDrive - deltacouncil/Zooplankton synthesis/Species modeling/Figures/Acanthocyclops_intercepts.png", device="png", units = "in", width=9, height=7)
+ggsave(p_intercepts, file="figures/Acanthocyclops_intercepts.png", device="png", units = "in", width=6, height=4)
