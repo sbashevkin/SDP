@@ -17,8 +17,8 @@ base<-deltamapr::WW_Delta%>%
 labels<-tibble(label=c("San Francisco Bay", "San Pablo Bay", "Suisun Bay", "Suisun Marsh", 
                        "Confluence", "Cache Slough", "Sacramento\nRiver", "San Joaquin River", "Napa River",
                        "Sacramento Ship Channel", "Cosumnes\nRiver", "Mokelumne\nRiver"), 
-               Latitude=c(37.9, 38.07, 38.08, 38.2, 38.046, 38.23, 38.50000, 37.9, 38.23, 38.51892, 38.35944, 38.2), 
-               Longitude=c(-122.4, -122.4, -122.05, -122.05, -121.9, -121.675, -121.5600, -121.325, -122.3, -121.5822, -121.3404, -121.335),
+               Latitude=c(37.9, 38.07, 38.08, 38.2, 38.046, 38.24, 38.50000, 37.9, 38.23, 38.51892, 38.35944, 38.2), 
+               Longitude=c(-122.4, -122.4, -122.05, -122.05, -121.9, -121.69, -121.5600, -121.325, -122.3, -121.588, -121.3404, -121.335),
                label_lat=c(37.9, 38.11, 38.15, 38.25, 38, 38.2, 38.49785, 37.85, 38.25, 38.54994, 38.43199, 38.11588), 
                label_lon=c(-122.25, -122.38, -122.18, -122.18, -122, -121.8, -121.4, -121.42, -122.37, -121.8, -121.4, -121.4))%>%
   st_as_sf(coords=c("Longitude", "Latitude"), crs=4326)%>%
