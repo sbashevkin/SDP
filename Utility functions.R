@@ -90,7 +90,9 @@ zoop_plot<-function(data, type){
                       type=="year" ~ "Month2", 
                       type=="salinity" ~ "Month2")
   
-  xlabel<-str_replace(xvar, "_", " ")
+  xlabel<-case_when(xvar=="Julian_day" ~ "Day of year", 
+                    xvar=="Salinity" ~ "Salinity (ppt)",
+                    TRUE ~ xvar)
   
   data_orphans<-data%>%
     group_by(.data[[fillvar]], .data[[facetvar]])%>%
@@ -103,7 +105,8 @@ zoop_plot<-function(data, type){
     scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
                                        breaks=unique(data$Salinity), 
                                        labels=round(unique(data$Salinity), 3),
-                                       limits=range(data$Salinity)),
+                                       limits=range(data$Salinity),
+                                       name="Salinity (ppt)"),
                  scale_x_continuous(breaks=c(1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335,
                                              15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349), 
                                     labels=c(rep("", 12), as.character(month(1:12, label = T))), limits=c(0,366),
@@ -115,7 +118,8 @@ zoop_plot<-function(data, type){
       scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
                                          breaks=unique(data$Salinity), 
                                          labels=round(unique(data$Salinity), 3),
-                                         limits=range(data$Salinity)),
+                                         limits=range(data$Salinity),
+                                         name="Salinity (ppt)"),
                    theme(axis.text.x=element_text(angle=45, hjust=1)))
       
     }else{
@@ -132,7 +136,7 @@ zoop_plot<-function(data, type){
     geom_pointrange(data=data_orphans, aes(color=.data[[fillvar]]), shape=21, position=position_dodge(width=2), size=0.2)+
     facet_wrap(~.data[[facetvar]], scales = "free_y")+
     scale_y_continuous(expand=c(0,0), limits = c(0, NA))+
-    ylab("CPUE")+
+    ylab(bquote("CPUE (count/"*m^3*")"))+
     xlab(xlabel)+
     theme_bw()+
     scales
