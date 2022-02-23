@@ -5,7 +5,12 @@ require(maps)
 
 Stations<-zooper::stations%>%
   filter(Source!="YBFMP")%>%
-  mutate(Source=recode(Source, twentymm="20mm"))%>%
+  mutate(Source=recode(Source, twentymm="20mm"),
+         Type="Fixed")%>%
+  bind_rows(zooper::stationsEMPEZ%>%
+              mutate(Type="EZ",
+                     Source="EMP")%>%
+              select(-Date))%>%
   drop_na()%>%
   mutate(Source=factor(Source, levels=c("EMP", "20mm", "FMWT", "STN", "FRP")))%>%
   st_as_sf(coords=c("Longitude", "Latitude"), crs=4326, remove=F)%>%
@@ -53,15 +58,19 @@ p<-ggplot() +
   geom_sf(data=base, fill="slategray3", color="slategray4")+
   geom_segment(data=labels, aes(x=label_X, y=label_Y, xend=X, yend=Y), arrow=arrow(type="closed", length=unit(0.1, "inches")), size=1)+
   geom_label(data=labels, aes(label=label, x=label_X, y=label_Y))+
+  geom_sf(data=Stations, aes(fill=Source, alpha=Type, shape=Source))+
   coord_sf(xlim=c(station_lims["xmin"], station_lims["xmax"]), ylim=c(station_lims["ymin"], station_lims["ymax"]))+
-  scale_fill_brewer(type="qual", palette="Set1", name="Survey")+
+  scale_fill_brewer(type="qual", palette="Set1", name="Survey", 
+                    guide=guide_legend(title.position = "top", title.hjust = 0.5))+
   scale_shape_manual(values=21:25, name="Survey")+
+  scale_alpha_manual(values=c(0.2, 0.7), name="Station type", 
+                     guide=guide_legend(override.aes=list(shape=19), title.position = "top", title.hjust = 0.5))+
   ylab("")+
   xlab("")+
   annotation_scale(location = "bl") +
   annotation_north_arrow(location = "bl", pad_y=unit(0.05, "npc"), which_north = "true")+
   theme_bw()+
-  theme(legend.background = element_rect(color="black"), legend.position=c(0.925,0.85))+
+  theme(legend.position = "bottom", legend.background=element_rect(color="black"))+
   annotation_custom(
     grob = ggplotGrob(pout),
     xmin = -Inf,
