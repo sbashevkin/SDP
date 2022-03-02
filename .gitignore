@@ -2,3 +2,6 @@
 .Rhistory
 *.RData
 .Ruserdata
+
+Bayesian-regression_cache/
+Bayesian-regression_files/

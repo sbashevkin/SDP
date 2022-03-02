@@ -1,0 +1,354 @@
+---
+title: "Bayesian regression"
+author: 
+  Sam Bashevkin^[Delta Science Program, Delta Stewardship Council, sam.bashevkin@deltacouncil.ca.gov]
+date: "2/28/2022"
+output: 
+  pdf_document:
+    includes:
+      in_header: "wrap-code.tex"
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Background
+
+To learn about Bayesian analyses, I highly recommend the book [Statistical Rethinking](https://xcelab.net/rm/statistical-rethink) by Richard McElreath. The full course for which this book was developed is recorded and available online, along with slides, code, examples, and translations of the book's code to other packages and programming languages (such as brms+tidyverse, Python, Julia): https://xcelab.net/rm/statistical-rethinking/. 
+
+Other books and resources that may be useful (and are freely available online):
+
+1. [Regression and other stories](https://avehtari.github.io/ROS-Examples/)
+2. [Bayesian Data Analysis](http://www.stat.columbia.edu/~gelman/book/)
+3. [Stan documentation](https://mc-stan.org/users/documentation/)
+4. [Stan forum](https://discourse.mc-stan.org/)
+
+## Components of a Bayesian analysis
+
+1. Data $D$: observations of the process to be modeled
+2. Parameters $\theta$: unknown inputs to be estimated in a model
+3. Prior $p(\theta)$: probability for each possible value of each parameter
+4. Likelihood $p(D|\theta)$: Probability of your data given the estimated parameters
+5. Posterior $p(\theta|D)$: probability of the estimated parameters given your data
+
+$p(\theta|D)=p(D|\theta)p(\theta)$
+
+## Prior choices
+
+Read the [Stan prior choice recommendations](https://github.com/stan-dev/stan/wiki/Prior-Choice-Recommendations) for the latest recommendations on priors.
+
+Here, you will see me using weakly informative priors with a mix of manually setting priors and using the `brms` default priors. Personally, I tend to use $Normal(0, 10)$ priors for intercepts, $Normal(0,5)$ priors for slopes, and $Cauchy(0,5)$ priors for variance terms. With more complex parameters (e.g., the smoothing parameters from a generalized additive model) I use the `brms` default priors. 
+
+# Load data
+
+Packages
+```{r packages, message=FALSE}
+library(zooper) # https://github.com/InteragencyEcologicalProgram/zooper
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+library(lubridate)
+library(brms)
+library(tidybayes)
+```
+
+```{r data, cache=TRUE}
+BL<-Zoopsynther(Data_type = "Taxa", Size_class="Meso", Taxa="Bosmina longirostris")%>%
+  # Remove non-fixed stations
+  filter(!Station%in%c("NZEZ2", "NZEZ6", "NZEZ2SJR", "NZEZ6SJR") &
+           # Just use post-POD years to reduce computational time 
+           Year>=2002)%>% 
+  # Add survey name to station variable
+  mutate(Station=paste(Source, Station), 
+         # log-transform salinity 
+         SalSurf_l = log(SalSurf),
+         # Create variable for day of year
+         DOY = yday(Date))%>% 
+  # drop rows with NAs in the key columns
+  drop_na(Date, SalSurf, CPUE)%>% 
+  # Standardize covariates
+  mutate(across(c(SalSurf_l, DOY), list(s=~(.-mean(., na.rm=T))/sd(., na.rm=T))))%>% 
+  select(Source, SampleID, CPUE, Date, Station, 
+         SalSurf, SalSurf_l, SalSurf_l_s, DOY, DOY_s)
+
+str(BL)
+```
+
+# Inspect data
+
+Inspect distribution of response variable (CPUE)
+```{r hist, message=FALSE, cache=TRUE}
+p1<-ggplot(BL, aes(x=CPUE))+
+  geom_histogram()+
+  coord_cartesian(expand = FALSE)+
+  ggtitle("CPUE")+
+  theme_bw()
+
+p2<-ggplot(BL, aes(x=log(CPUE+1)))+
+  geom_histogram()+
+  coord_cartesian(expand = FALSE)+
+  ggtitle("log(CPUE+1)")+
+  theme_bw()
+
+p1/p2
+```
+
+Why did I log-transform salinity?
+
+```{r salinity, message=FALSE, cache=TRUE}
+p1<-ggplot(BL, aes(x=SalSurf, y=CPUE))+
+  geom_point(alpha=0.1)+
+  ggtitle("Salinity")+
+  theme_bw()
+
+p2<-ggplot(BL, aes(x=SalSurf_l, y=CPUE))+
+  geom_point(alpha=0.1)+
+  ggtitle("log(Salinity)")+
+  theme_bw()
+
+p1/p2
+```
+
+There is a much clearer unimodal relationship with the log-transformed salinity. 
+
+How do they vary seasonally?
+```{r doy, message=FALSE, cache=TRUE}
+ggplot(BL, aes(x=DOY, y=CPUE))+
+  geom_point(alpha=0.1)+
+  theme_bw()
+```
+
+# Model
+
+Set iterations
+```{r modelsetup}
+iterations <- 5e3
+warmup <- iterations/4
+```
+
+
+## Super simple model
+
+This model is purposefully bad (gaussian family when it should be hurdle_lognormal)
+The messages you will see are normal, but I'll suppress them for the other models
+```{r ssimplemodel, cache=TRUE}
+m1<-brm(CPUE ~ SalSurf_l_s, 
+        data=BL, family=gaussian(),
+        prior=prior(normal(0,10), class="Intercept")+
+          prior(normal(0,5), class="b")+
+          prior(cauchy(0,5), class="sigma"),
+        chains=1, # Setting low to reduce computational. You should use >=3 chains
+        iter = iterations, warmup = warmup,
+        backend = "cmdstanr", threads = threading(5)) # Split the chain among 5 cores
+```
+
+### Explore simple model
+
+Posterior predictive checks
+See [this vignette](https://cran.r-project.org/web/packages/bayesplot/vignettes/graphical-ppcs.html) for more info
+```{r ssimpleppcheck, cache=TRUE}
+pp_check(m1)+scale_x_continuous(trans="log1p")
+```
+Each of the 10 light blue lines represents the density of predicted CPUE values from 1 posterior draw, while the dark line represents the density of CPUE values in the actual data. This is bad, the two density plots should be overlapping, but they look completely different
+
+Check the proportion of zeroes in the data and predicted by the model
+```{r ssimplepzero, cache=TRUE}
+prop_zero <- function(x) mean(x == 0) # Calculates proportion of values that are zero
+pp_check(m1, type="stat", stat=prop_zero)
+```
+The light blue histogram represents the distribution of the proportion of zeroes among all the posterior draws. The dark blue line represents the actual proportion of zeroes in the data. This is also bad, the model is predicting no zeroes, while the dataset is ~1/3 zeroes
+
+## Simple model
+
+Let's try a better model using the hurdle_lognormal distribution
+```{r simplemodel, message=FALSE, cache=TRUE}
+m2<-brm(CPUE ~ SalSurf_l_s, 
+        data=BL, family=hurdle_lognormal(),
+        prior=prior(normal(0,10), class="Intercept")+
+          prior(normal(0,5), class="b")+
+          prior(cauchy(0,5), class="sigma"),
+        chains=1,
+        iter = iterations, warmup = warmup,
+        backend = "cmdstanr", threads = threading(5)) # Split the chain among 5 cores
+```
+
+Posterior predictive check
+```{r simpleppcheck, cache=TRUE}
+pp_check(m2)+scale_x_continuous(trans="log1p")
+```
+This is way better, but still not great
+
+Check the proportion of zeroes in the data and predicted by the model
+```{r simplepzero, cache=TRUE}
+pp_check(m2, type="stat", stat=prop_zero)
+```
+This is great! The model is now capturing the correct proportion of zeroes.
+
+## Complex model
+
+```{r complexmodel, message=FALSE, cache=TRUE}
+m3<-brm(bf(CPUE ~ t2(DOY_s, SalSurf_l_s) + (1|Station),
+           hu ~ s(SalSurf_l_s, bs="cr", k=5)),
+        data=BL, family=hurdle_lognormal(),
+        prior=prior(normal(0,10), class="Intercept")+
+          prior(normal(0,5), class="b")+
+          prior(cauchy(0,5), class="sigma"),
+        chains=1, 
+        control=list(adapt_delta=0.9),
+        iter = iterations, warmup = warmup,
+        backend = "cmdstanr", threads = threading(5))
+```
+
+Posterior predictive check
+```{r complexppcheck, cache=TRUE}
+pp_check(m3)+scale_x_continuous(trans="log1p")
+```
+This is now great. 
+
+Check the proportion of zeroes in the data and predicted by the model
+```{r complexpzero, cache=TRUE}
+pp_check(m3, type="stat", stat=prop_zero)
+```
+This is still great, practically the same as the prior model.
+
+Since the model is much improved, let's check the chains as well. You want this to look like a fuzzy caterpillar, not a snake.
+
+```{r complexplot, fig.height=4, cache=TRUE}
+plot(m3, ask=F, N=3)
+```
+Looks good!
+
+Let's look at a summary of the model outputs
+```{r}
+summary(m3)
+```
+The effective sample sizes ("ESS") should be >100 per chain, and Rhat should be <1.05, so we're good on both those metrics. However, there was a warning about divergent transitions, so the `adapt_delta` parameter should be increased further for a real analysis. 
+
+### Extract the results
+
+Now that we have a good model, we can look more closely at the model and the results!
+
+Set up a dataset with a range of covariates to explore the model results
+```{r newdata}
+newdata<-expand_grid(SalSurf=round(quantile(BL$SalSurf, seq(0.05, 0.95, by=0.05)), 4),
+                     DOY=seq(min(BL$DOY), max(BL$DOY), length.out=60))%>%
+  # standardize to match model inputs
+  mutate(DOY=round(DOY),
+         SalSurf_l_s=(log(SalSurf)-mean(BL$SalSurf_l))/sd(BL$SalSurf_l), 
+         DOY_s=(DOY-mean(DOY))/sd(DOY))
+```
+
+Create model predictions to visualize
+```{r predict}
+# We're using the fitted function here to get the predicted mean response values
+# Using the predict function would return simulated response values 
+pred<-fitted(m3, newdata=newdata, re_formula=NA)
+
+newdata_pred<-newdata%>%
+  mutate(prediction=pred[,"Estimate"], # Add predicted values
+         l95=pred[,"Q2.5"], # Add lower 95% credible intervals
+         u95=pred[,"Q97.5"]) # Add upper 95% credible intervals
+```
+
+Where do the 95% credible intervals come from?
+They are just the 95% quantiles of the posterior distribution.
+We could calculate the same metric this way
+```{r predict2}
+pred_full<-fitted(m3, newdata=newdata, re_formula=NA, summary=FALSE)
+
+str(pred_full)
+```
+So this full set of predictions is a matrix with rows representing the `r iterations-warmup` posterior draws (one for each model iteration, note that `iterations`-`warmup`=`r iterations-warmup`) and columns representing the `r nrow(newdata)` rows in the `newdata` file. 
+
+Calculate credible intervals with quantiles
+```{r predict2sum}
+pred_full_sum<-matrix(nrow=nrow(newdata), ncol=3, dimnames = list(NULL, c("Estimate", "Q2.5", "Q97.5")))
+
+pred_full_sum[,"Estimate"]<-apply(pred_full, MARGIN=2, mean)
+pred_full_sum[,"Q2.5"]<-apply(pred_full, MARGIN=2, quantile, probs=0.025)
+pred_full_sum[,"Q97.5"]<-apply(pred_full, MARGIN=2, quantile, probs=0.975)
+
+str(pred_full_sum)
+```
+
+
+Now how does this compare to the first way we calculated the credible intervals?
+```{r predict2compare}
+# Estimate
+all(near(pred[,"Estimate"], pred_full_sum[,"Estimate"]))
+# Lower 95% quantile
+all(near(pred[,"Q2.5"], pred_full_sum[,"Q2.5"]))
+# Upper 95% quantile
+all(near(pred[,"Q97.5"], pred_full_sum[,"Q97.5"]))
+```
+Success! They are all identical
+
+
+### Visualize the results
+
+CPUE by salinity (with salinity on a log scale) 
+```{r predsalplot}
+ggplot(filter(newdata_pred, DOY%in%unique(DOY)[1:4*15]), 
+       aes(x=SalSurf, y=prediction, ymin=l95, ymax=u95, fill=DOY, color=DOY, group=DOY))+
+  geom_ribbon(alpha=0.3, color=NA)+
+  geom_line()+
+  scale_fill_viridis_c(aesthetics = c("color", "fill"))+
+  scale_x_continuous(trans="log", breaks=scales::breaks_log())+
+  coord_cartesian(expand = FALSE)+
+  theme_bw()
+```
+As you might expect for a Cladoceran (freshwater taxa), abundance increases with lower salinity. 
+
+
+CPUE by seasonality (DOY)
+```{r}
+ggplot(filter(newdata_pred, SalSurf%in%unique(SalSurf)[seq(1,19, by=3)]),
+       aes(x=DOY, y=prediction, ymin=l95, ymax=u95, 
+           fill=SalSurf, color=SalSurf, group=SalSurf))+
+  geom_ribbon(alpha=0.3)+
+  geom_line()+
+  scale_fill_viridis_c(aesthetics = c("color", "fill"), 
+                       trans="log", breaks=scales::breaks_log())+
+  coord_cartesian(expand = FALSE, xlim=c(0, 366))+
+  theme_bw()
+```
+It looks like abundance peaks around the end of April, and there doesn't seem to be an interaction of DOY with Salinity. 
+
+### Exploring the posterior
+
+Let's dive deeper into the model to take advantage of our Bayesian analysis and full posterior distribution
+
+Earlier we explored the mean predicted values with 95% credible intervals, but what does the full posterior actually look like? We'll use the `tidybayes` package, which is an excellent way to explore and understand your Bayesian model. To simplify things, We'll explore the posterior for 1 scenario: DOY 118 and Salinity 0.0965, guided by the question: how often is CPUE > 600?
+
+Here is the distribution of mean response values from the posterior
+```{r postepred}
+all_epreds<-filter(newdata, SalSurf==0.0965 & DOY==118)%>%
+  add_epred_draws(m3, re_formula = NA)
+
+ggplot(all_epreds, aes(x=.epred, fill=stat(x>600)))+
+  stat_slab()+
+  geom_vline(xintercept = 600, linetype = "dashed")+
+  xlab("Mean response value")+
+  ylab("Density")+
+  scale_fill_manual(values = c("gray80", "skyblue"))+
+  theme_bw()
+```
+
+Here is the distribution of simulated response values from the posterior (e.g., simulating an actual zooplankton sample, so it incorporates the model-family variance)
+```{r postpred}
+all_preds<-filter(newdata, SalSurf==0.0965 & DOY==118)%>%
+  add_predicted_draws(m3, re_formula = NA)
+
+ggplot(all_preds, aes(x=.prediction, fill=stat(x>600)))+
+  stat_slab()+
+  geom_vline(xintercept = 600, linetype = "dashed")+
+  scale_fill_manual(values = c("gray80", "skyblue"))+
+  xlab("Simulated response value")+
+  ylab("Density")+
+  theme_bw()
+```
+
+Wow, this looks way different, why might that be? Well, the mean response values in the prior plot represent the mean expected value. It would not be 0 for this combination of covariates, which regularly results in positive catches, and is much less variable since it represents the mean expectation. The latter plot includes actual simulations of data points, which are often 0 despite the favorable conditions, but when non-zero, they can be very large numbers. The large numbers contribute to dragging the mean response value far from 0, as you see in the former plot. You can see this convergence by comparing the mean values of the predictions from each method, which are very close with the mean of the mean response values at `r round(mean(all_epreds$.epred))` and the mean of the simulated response values at `r round(mean(all_preds$.prediction))`
