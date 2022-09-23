@@ -91,7 +91,7 @@ zoop_plot<-function(data, type){
                       type=="salinity" ~ "Month2")
   
   xlabel<-case_when(xvar=="Julian_day" ~ "Day of year", 
-                    xvar=="Salinity" ~ "Salinity (ppt)",
+                    xvar=="Salinity" ~ "Salinity",
                     TRUE ~ xvar)
   
   data_orphans<-data%>%
@@ -106,7 +106,7 @@ zoop_plot<-function(data, type){
                                        breaks=unique(data$Salinity), 
                                        labels=round(unique(data$Salinity), 3),
                                        limits=range(data$Salinity),
-                                       name="Salinity (ppt)"),
+                                       name="Salinity"),
                  scale_x_continuous(breaks=c(1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335,
                                              15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349), 
                                     labels=c(rep("", 12), as.character(month(1:12, label = T))), limits=c(0,366),
@@ -119,7 +119,7 @@ zoop_plot<-function(data, type){
                                          breaks=unique(data$Salinity), 
                                          labels=round(unique(data$Salinity), 3),
                                          limits=range(data$Salinity),
-                                         name="Salinity (ppt)"),
+                                         name="Salinity"),
                    theme(axis.text.x=element_text(angle=45, hjust=1)))
       
     }else{
