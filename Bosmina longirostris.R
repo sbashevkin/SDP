@@ -15,8 +15,6 @@ require(colorspace)
 require(stringr)
 source("Utility functions.R")
 
-# Try adding volume to the hu formula?
-
 # Cluster nearby stations
 Stations<-zooper::stations%>%
   mutate(Station=paste(Source, Station))%>%

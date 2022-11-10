@@ -130,7 +130,7 @@ zoop_plot<-function(data, type){
     
   }
   
-  p<-ggplot(data, aes(x=.data[[xvar]], y=Pred, ymin=lowerCI, ymax=upperCI, fill=.data[[fillvar]], group=.data[[fillvar]]))+
+  p<-ggplot(data, aes(x=.data[[xvar]], y=Pred, ymin=lowerCI, ymax=upperCI, fill=.data[[fillvar]], group=.data[[fillvar]], linetype=.data[[fillvar]]))+
     geom_ribbon(alpha=0.4)+
     geom_line(aes(color=.data[[fillvar]]))+
     geom_pointrange(data=data_orphans, aes(color=.data[[fillvar]]), shape=21, position=position_dodge(width=2), size=0.2)+
