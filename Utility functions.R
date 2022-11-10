@@ -107,6 +107,9 @@ zoop_plot<-function(data, type){
                                        labels=round(unique(data$Salinity), 3),
                                        limits=range(data$Salinity),
                                        name="Salinity"),
+                 scale_linetype(breaks=unique(factor(data$Salinity)),
+                                labels=round(unique(data$Salinity), 3),
+                                name="Salinity"),
                  scale_x_continuous(breaks=c(1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335,
                                              15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349), 
                                     labels=c(rep("", 12), as.character(month(1:12, label = T))), limits=c(0,366),
@@ -118,24 +121,29 @@ zoop_plot<-function(data, type){
       scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
                                          breaks=unique(data$Salinity), 
                                          labels=round(unique(data$Salinity), 3),
-                                         limits=range(data$Salinity),
                                          name="Salinity"),
+                   scale_linetype(breaks=unique(factor(data$Salinity)),
+                                  labels=round(unique(data$Salinity), 3),
+                                  name="Salinity"),
                    theme(axis.text.x=element_text(angle=45, hjust=1)))
       
     }else{
       scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill")),
+                   scale_linetype(name="Year"),
                    scale_x_continuous(trans="log", breaks=round(exp(seq(log(min(data$Salinity)), log(max(data$Salinity)), length.out=5)), 3),  minor_breaks = NULL),
                    theme(axis.text.x=element_text(angle=45, hjust=1)))
     }
     
   }
   
-  p<-ggplot(data, aes(x=.data[[xvar]], y=Pred, ymin=lowerCI, ymax=upperCI, fill=.data[[fillvar]], group=.data[[fillvar]], linetype=.data[[fillvar]]))+
+  p<-ggplot(data, aes(x=.data[[xvar]], y=Pred, ymin=lowerCI, ymax=upperCI, 
+                      fill=.data[[fillvar]], group=.data[[fillvar]]))+
     geom_ribbon(alpha=0.4)+
-    geom_line(aes(color=.data[[fillvar]]))+
+    geom_line(aes(color=.data[[fillvar]], linetype=factor(.data[[fillvar]])))+
     geom_pointrange(data=data_orphans, aes(color=.data[[fillvar]]), shape=21, position=position_dodge(width=2), size=0.2)+
     facet_wrap(~.data[[facetvar]], scales = "free_y")+
-    scale_y_continuous(expand=c(0,0), limits = c(0, NA))+
+    scale_y_continuous(expand=c(0,0), limits = c(0, NA)) +
+    guides(linetype = guide_legend(reverse = TRUE))+
     ylab(bquote("CPUE (count/"*m^3*")"))+
     xlab(xlabel)+
     theme_bw()+
