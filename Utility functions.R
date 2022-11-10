@@ -143,7 +143,9 @@ zoop_plot<-function(data, type){
     geom_pointrange(data=data_orphans, aes(color=.data[[fillvar]]), shape=21, position=position_dodge(width=2), size=0.2)+
     facet_wrap(~.data[[facetvar]], scales = "free_y")+
     scale_y_continuous(expand=c(0,0), limits = c(0, NA)) +
-    guides(linetype = guide_legend(reverse = TRUE))+
+    guides(linetype = guide_legend(reverse = TRUE, order=99),
+           fill=guide_colorbar(order=1),
+           color=guide_colorbar(order=1))+
     ylab(bquote("CPUE (count/"*m^3*")"))+
     xlab(xlabel)+
     theme_bw()+
