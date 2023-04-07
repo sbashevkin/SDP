@@ -102,10 +102,10 @@ zoop_plot<-function(data, type){
     select(-Pred_lag, -Pred_lead)
   
   if(type=="season"){
-    scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
-                                       breaks=unique(data$Salinity), 
+    scales<-list(scale_color_viridis_d(breaks=unique(factor(data$Salinity)),
                                        labels=round(unique(data$Salinity), 3),
-                                       limits=range(data$Salinity),
+                                       aesthetics = c("color", "fill"), 
+                                       end=0.8, 
                                        name="Salinity"),
                  scale_linetype(breaks=unique(factor(data$Salinity)),
                                 labels=round(unique(data$Salinity), 3),
@@ -118,9 +118,10 @@ zoop_plot<-function(data, type){
                        panel.grid.minor=element_blank(), panel.grid.major.x=element_line(color = c(rep("grey92", 12), rep(NA, 12)))))
   }else{
     if(type=="year"){
-      scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill"), trans="log", 
-                                         breaks=unique(data$Salinity), 
+      scales<-list(scale_color_viridis_d(breaks=unique(factor(data$Salinity)),
                                          labels=round(unique(data$Salinity), 3),
+                                         aesthetics = c("color", "fill"), 
+                                         end=0.8, 
                                          name="Salinity"),
                    scale_linetype(breaks=unique(factor(data$Salinity)),
                                   labels=round(unique(data$Salinity), 3),
@@ -128,7 +129,7 @@ zoop_plot<-function(data, type){
                    theme(axis.text.x=element_text(angle=45, hjust=1)))
       
     }else{
-      scales<-list(scale_color_viridis_c(aesthetics = c("color", "fill")),
+      scales<-list(scale_color_viridis_d(aesthetics = c("color", "fill"), end=0.8, name="Year"),
                    scale_linetype(name="Year"),
                    scale_x_continuous(trans="log", breaks=round(exp(seq(log(min(data$Salinity)), log(max(data$Salinity)), length.out=5)), 3),  minor_breaks = NULL),
                    theme(axis.text.x=element_text(angle=45, hjust=1)))
@@ -137,16 +138,15 @@ zoop_plot<-function(data, type){
   }
   
   p<-ggplot(data, aes(x=.data[[xvar]], y=Pred, ymin=lowerCI, ymax=upperCI, 
-                      fill=.data[[fillvar]], group=.data[[fillvar]]))+
+                      fill=factor(.data[[fillvar]]), group=.data[[fillvar]]))+
     geom_ribbon(alpha=0.4)+
-    geom_line(aes(color=.data[[fillvar]], linetype=factor(.data[[fillvar]])))+
-    geom_pointrange(data=data_orphans, aes(color=.data[[fillvar]]), shape=21, position=position_dodge(width=2), size=0.2)+
+    geom_line(aes(color=factor(.data[[fillvar]]), linetype=factor(.data[[fillvar]])))+
+    geom_pointrange(data=data_orphans, aes(color=factor(.data[[fillvar]])), 
+                    shape=21, position=position_dodge(width=2), size=0.2,
+                    show.legend=F)+
     facet_wrap(~.data[[facetvar]], scales = "free_y")+
     scale_y_continuous(expand=c(0,0), limits = c(0, NA)) +
-    guides(linetype = guide_legend(reverse = TRUE, order=99),
-           fill=guide_colorbar(order=1),
-           color=guide_colorbar(order=1))+
-    ylab(bquote("CPUE (count/"*m^3*")"))+
+    ylab(bquote("Abundance (# "*m^-3*")"))+
     xlab(xlabel)+
     theme_bw()+
     scales

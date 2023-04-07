@@ -2,19 +2,45 @@ require(tidyverse)
 require(ggspatial)
 require(sf)
 require(maps)
+require(spacetools)
 
 Stations<-zooper::stations%>%
   filter(Source!="YBFMP")%>%
   mutate(Source=recode(Source, twentymm="20mm"),
          Type="Fixed")%>%
+  drop_na()%>%
   bind_rows(zooper::stationsEMPEZ%>%
               mutate(Type="EZ",
-                     Source="EMP")%>%
-              select(-Date))%>%
-  drop_na()%>%
+                     Source="EMP",
+                     Station2=paste(Station, Date))%>%
+              select(-Date)%>%
+              drop_na())%>%
   mutate(Source=factor(Source, levels=c("EMP", "20mm", "FMWT", "STN", "FRP")))%>%
   st_as_sf(coords=c("Longitude", "Latitude"), crs=4326, remove=F)%>%
   st_transform(crs=26910)
+
+waterways <- Maptransitioner(spacetools::Delta)
+
+EZ_Stations<-Stations%>%
+  filter(Type=="EZ")%>%
+  st_drop_geometry()
+
+distance<-GGdist(Water_map = spacetools::Delta, Points = EZ_Stations, Latitude_column = Latitude,
+                 Longitude_column = Longitude, PointID_column = Station2,
+                 Water_map_transitioned = waterways)
+
+EZ_Stations_distance<-EZ_Stations%>%
+  left_join(distance, by="Station2")%>%
+  arrange(Distance)%>%
+  group_by(Station)%>%
+  slice(c(round(n()*c(0.025, 0.5, 0.975))))%>%
+  ungroup()
+
+Stations_plot<-Stations%>%
+  filter(Type!="EZ")%>%
+  bind_rows(EZ_Stations_distance%>%
+              select(-Distance, -Station2))
+  
 
 base<-deltamapr::WW_Delta%>%
   st_transform(crs=26910)
@@ -40,15 +66,15 @@ states <- st_as_sf(map("state", plot = FALSE, fill = TRUE))%>%
 california<-filter(states, ID=="california")
 
 base2<-base%>%
-  st_crop(st_bbox(Stations))
+  st_crop(st_bbox(Stations_plot))
 
-station_lims<-st_bbox(Stations)
+station_lims<-st_bbox(Stations_plot)
 
 pout<-ggplot(states)+
   geom_sf(color="dodgerblue3")+
   geom_sf(data=base2, color="dodgerblue3", fill="dodgerblue3")+
   geom_rect(xmin = station_lims["xmin"]-22000, xmax = station_lims["xmax"]+22000, ymin = station_lims["ymin"]-22000, ymax = station_lims["ymax"]+22000, 
-            fill = NA, colour = "black", size = 0.7)+
+            fill = NA, colour = "black", linewidth = 0.7)+
   coord_sf(xlim=c(st_bbox(california)["xmin"], st_bbox(california)["xmax"]), ylim=c(st_bbox(california)["ymin"], st_bbox(california)["ymax"]))+
   theme_bw()+
   theme(panel.background = element_rect(fill = "dodgerblue3"), axis.text.x=element_text(angle=45, hjust=1))
@@ -56,15 +82,13 @@ pout
 
 p<-ggplot() +
   geom_sf(data=base, fill="slategray3", color="slategray4")+
-  geom_segment(data=labels, aes(x=label_X, y=label_Y, xend=X, yend=Y), arrow=arrow(type="closed", length=unit(0.1, "inches")), size=1)+
+  geom_segment(data=labels, aes(x=label_X, y=label_Y, xend=X, yend=Y), arrow=arrow(type="closed", length=unit(0.1, "inches")), linewidth=1)+
   geom_label(data=labels, aes(label=label, x=label_X, y=label_Y))+
-  geom_sf(data=Stations, aes(fill=Source, alpha=Type, shape=Source))+
+  geom_sf(data=Stations_plot, aes(fill=Source, shape=Source))+
   coord_sf(xlim=c(station_lims["xmin"], station_lims["xmax"]), ylim=c(station_lims["ymin"], station_lims["ymax"]))+
   scale_fill_brewer(type="qual", palette="Set1", name="Survey", 
                     guide=guide_legend(title.position = "top", title.hjust = 0.5))+
   scale_shape_manual(values=21:25, name="Survey")+
-  scale_alpha_manual(values=c(0.2, 0.7), name="Station type", 
-                     guide=guide_legend(override.aes=list(shape=19), title.position = "top", title.hjust = 0.5))+
   ylab("")+
   xlab("")+
   annotation_scale(location = "bl") +
