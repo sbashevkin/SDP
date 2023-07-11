@@ -189,10 +189,16 @@ AV_year<-zoop_plot(AV_preds, "year")
 AV_season<-zoop_plot(AV_preds, "season")
 
 ggsave(AV_season, file="figures/Acanthocyclops_season.png", device="png", units = "in", width=8, height=6)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 6 Acanthocyclops_season.tif", 
+       plot=AV_season, device="tiff", width=8, height=8, units = "in")
 
 ggsave(AV_year, file="figures/Acanthocyclops_year.png", device="png", units = "in", width=8, height=6)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 7 Acanthocyclops_year.tif", 
+       plot=AV_year, device="tiff", width=8, height=8, units = "in")
 
 ggsave(AV_salinity, file="figures/Acanthocyclops_salinity.png", device="png", units = "in", width=8, height=6)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure S2 Acanthocyclops_salinity.tif", 
+       plot=AV_salinity, device="tiff", width=8, height=8, units = "in")
 
 
 # Plot station intercepts -------------------------------------------------
@@ -200,3 +206,5 @@ ggsave(AV_salinity, file="figures/Acanthocyclops_salinity.png", device="png", un
 p_intercepts<-zoop_stations(mb2_full, select(Stations_clust, Clust, Latitude, Longitude))
 
 ggsave(p_intercepts, file="figures/Acanthocyclops_intercepts.png", device="png", units = "in", width=6, height=4)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 8 Acanthocyclops_intercepts.tif", 
+       plot=p_intercepts, device="tiff", width=8, height=8, units = "in")

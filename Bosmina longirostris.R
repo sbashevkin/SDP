@@ -317,13 +317,21 @@ BL_year<-zoop_plot(BL_preds, "year")
 BL_season<-zoop_plot(BL_preds, "season")
 
 ggsave(BL_season, file="figures/Bosmina_season.png", device="png", units = "in", width=8, height=6)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 3 Bosmina_season.tif", 
+       plot=BL_season, device="tiff", width=8, height=8, units = "in")
 
 ggsave(BL_year, file="figures/Bosmina_year.png", device="png", units = "in", width=8, height=6)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 4 Bosmina_year.tif", 
+       plot=BL_year, device="tiff", width=8, height=8, units = "in")
 
 ggsave(BL_salinity, file="figures/Bosmina_salinity.png", device="png", units = "in", width=8, height=6)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure S1 Bosmina_salinity.tif", 
+       plot=BL_salinity, device="tiff", width=8, height=8, units = "in")
 
 # Plot station intercepts -------------------------------------------------
 
 p_intercepts<-zoop_stations(mb2M_full, select(Stations_clust, Clust, Latitude, Longitude))
 
 ggsave(p_intercepts, file="figures/Bosmina_intercepts.png", device="png", units = "in", width=6, height=4)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 5 Bosmina_intercepts.tif", 
+       plot=p_intercepts, device="tiff", width=8, height=8, units = "in")

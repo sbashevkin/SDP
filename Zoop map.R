@@ -105,3 +105,4 @@ p<-ggplot() +
 p
 
 ggsave("figures/Map.png", plot=p, device="png", width=8, height=8, units = "in")
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 2 Map.tif", plot=p, device="tiff", width=8, height=8, units = "in")

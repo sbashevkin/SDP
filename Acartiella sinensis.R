@@ -201,10 +201,16 @@ AS_year<-zoop_plot(AS_preds, "year")
 AS_season<-zoop_plot(AS_preds, "season")
 
 ggsave(AS_season, file="figures/Acartiella_adult_season.png", device="png", units = "in", width=8, height=6)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 9 Acartiella_adult_season.tif", 
+       plot=AS_season, device="tiff", width=8, height=8, units = "in")
 
 ggsave(AS_year, file="figures/Acartiella_adult_year.png", device="png", units = "in", width=8, height=6)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 10 Acartiella_adult_year.tif", 
+       plot=AS_year, device="tiff", width=8, height=8, units = "in")
 
 ggsave(AS_salinity, file="figures/Acartiella_adult_salinity.png", device="png", units = "in", width=8, height=6)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure S3 Acartiella_adult_salinity.tif", 
+       plot=AS_salinity, device="tiff", width=8, height=8, units = "in")
 
 
 ## Plot station intercepts -------------------------------------------------
@@ -212,6 +218,8 @@ ggsave(AS_salinity, file="figures/Acartiella_adult_salinity.png", device="png", 
 p_intercepts<-zoop_stations(mb5_full, select(Stations_clust, Clust, Latitude, Longitude))
 
 ggsave(p_intercepts, file="figures/Acartiella_adult_intercepts.png", device="png", units = "in", width=6, height=4)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 11 Acartiella_adult_intercepts.tif", 
+       plot=p_intercepts, device="tiff", width=8, height=8, units = "in")
 
 
 # Model juveniles----------------------------------------------------------
@@ -307,10 +315,16 @@ AS_juv_year<-zoop_plot(AS_juv_preds, "year")
 AS_juv_season<-zoop_plot(AS_juv_preds, "season")
 
 ggsave(AS_juv_season, file="figures/Acartiella_juv_season.png", device="png", units = "in", width=8, height=6)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 12 Acartiella_juv_season.tif", 
+       plot=AS_juv_season, device="tiff", width=8, height=8, units = "in")
 
 ggsave(AS_juv_year, file="figures/Acartiella_juv_year.png", device="png", units = "in", width=8, height=6)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 13 Acartiella_juv_year.tif", 
+       plot=AS_juv_year, device="tiff", width=8, height=8, units = "in")
 
 ggsave(AS_juv_salinity, file="figures/Acartiella_juv_salinity.png", device="png", units = "in", width=8, height=6)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure S4 Acartiella_juv_salinity.tif", 
+       plot=AS_juv_salinity, device="tiff", width=8, height=8, units = "in")
 
 
 ## Plot station intercepts -------------------------------------------------
@@ -318,3 +332,5 @@ ggsave(AS_juv_salinity, file="figures/Acartiella_juv_salinity.png", device="png"
 p_juv_intercepts<-zoop_stations(mb6_juv_full, select(Stations_clust, Clust, Latitude, Longitude))
 
 ggsave(p_juv_intercepts, file="figures/Acartiella_juv_intercepts.png", device="png", units = "in", width=6, height=4)
+ggsave("C:/Users/sbashevkin/California Department of Water Resources/Zooplankton synthesis - Zoop species manuscript/Fourth draft/figures/Figure 14 Acartiella_juv_intercepts.tif", 
+       plot=p_juv_intercepts, device="tiff", width=8, height=8, units = "in")
